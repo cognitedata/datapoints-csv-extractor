@@ -15,13 +15,16 @@ if not API_KEY:
 
 
 # Global variable for last timestamp processed
-last_processed = 0
+last_processed = 1548975600
 
 # Maximum number of time series batched at once
 batch_max = 1000
 
 # Path to folder of CSV files
-folder_path = "../TebisSampleData2/"
+folder_path = '../TebisSampleData2/'
+
+# File path of files processed. Stores Epoch timestamp
+epoch_path = 'epoch_timestamp.txt'
 
 client = CogniteClient(api_key=API_KEY)
 
@@ -59,14 +62,15 @@ def post_datapoints(files):
             client.datapoints.post_multi_time_series_datapoints(current_time_series)
             current_time_series = []
 
-
         os.remove(filename)
         print('Processed: ' + filename)
 
     # Update the timestamp compared to if new files are processed
     global last_processed
     if files:
-        last_processed = int(re.search(r'\d+', files[-1]).group(0))
+        last_processed = int(re.findall(r'\d+', files[-1])[-1])
+        with open(epoch_path, 'a') as f:
+            f.write(str(last_processed) + '\n')
 
     # Delay processing between files by a second
     time.sleep(1)
@@ -74,15 +78,19 @@ def post_datapoints(files):
 # Find new files, if existent and post datapoints from that file
 def find_new_files():
     # Find all files in filepath and their corresponding timestamps
-    all_files = sorted(glob.glob(folder_path + "/*.csv"))
-    all_timestamps = [re.search(r'\d+', x).group(0) for x in all_files]
+    all_files = sorted(glob.glob(folder_path + '/*.csv'))
+    all_timestamps = [re.findall(r'\d+', x)[-1] for x in all_files]
     all_timestamps = list(map(int, all_timestamps))
 
     # Find files from a timestamp later than the last processed file
     global last_processed
+    with open(epoch_path) as f:
+        for line in f:
+            pass
+        last_line = line
+        last_processed = int(last_line)
     new_timestamps = [i for i, x in enumerate(all_timestamps) if x > last_processed]
     new_files = [all_files[i] for i in new_timestamps]
-    print(new_files)
 
     if new_files:
         post_datapoints(new_files)
@@ -90,7 +98,7 @@ def find_new_files():
     time.sleep(5)
 
 def extract_datapoints():
-    initial_files = sorted(glob.glob(folder_path + "/*.csv"))
+    initial_files = sorted(glob.glob(folder_path + '/*.csv'))
     post_datapoints(initial_files)
     while True:
         find_new_files()
