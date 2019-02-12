@@ -21,7 +21,7 @@ last_processed = 0
 batch_max = 1000
 
 # Path to folder of CSV files
-folder_path = "../TebisSampleData/"
+folder_path = "../TebisSampleData2/"
 
 client = CogniteClient(api_key=API_KEY)
 
@@ -59,6 +59,8 @@ def post_datapoints(files):
             client.datapoints.post_multi_time_series_datapoints(current_time_series)
             current_time_series = []
 
+
+        os.remove(filename)
         print('Processed: ' + filename)
 
     # Update the timestamp compared to if new files are processed
