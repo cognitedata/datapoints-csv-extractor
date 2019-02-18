@@ -1,3 +1,4 @@
+import argparse
 import logging
 import os
 import sys
@@ -84,26 +85,39 @@ def find_new_files(last_mtime, base_path):
     return [p for p, mtime in paths if mtime > last_mtime]
 
 
-def extract_datapoints():
+def extract_datapoints(data_type):
     client = CogniteClient(api_key=API_KEY)
     existing_timeseries = set(i["name"] for i in client.time_series.get_time_series(autopaging=True).to_json())
 
-    last_timestamp = LAST_PROCESSED_TIMESTAMP
+    if data_type == 'live':
+        try:
+            while True:
+                paths = find_new_files(last_timestamp, FOLDER_PATH)
+                if paths:
+                    last_timestamp = post_datapoints(client, paths, existing_timeseries)
 
-    try:
-        while True:
-            paths = find_new_files(last_timestamp, FOLDER_PATH)
-            if paths:
-                last_timestamp = post_datapoints(client, paths, existing_timeseries)
+                    # logger.info("Removing processed files {}".format(', '.join(p.name for p in paths)))
+                    # for path in paths:
+                    #    path.unlink()
 
-                # logger.info("Removing processed files {}".format(', '.join(p.name for p in paths)))
-                # for path in paths:
-                #    path.unlink()
+                    time.sleep(5)
+        except KeyboardInterrupt:
+            logger.warning("Extractor stopped")
+    else if data_type == 'historical':
+        paths = find_new_files(0, FOLDER_PATH) # All paths in folder, regardless of timestamp
+        if paths:
+            post_datapoints(client, paths, existing_timeseries)
+        logger.info("Extraction complete")
 
-                time.sleep(5)
-    except KeyboardInterrupt:
-        logger.warning("Extractor stopped")
+
+# Ensure that user specifies live or historical data
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--data_type', choices=['live', 'historical'], type=str.lower, help='Input should be "live" or "historical" \
+                to specify data type. If live data, the earliest time stamp to examine must be specified.')
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
-    extract_datapoints()
+    args = parse_arguments()
+    extract_datapoints(args.data_type)
