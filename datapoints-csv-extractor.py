@@ -55,34 +55,53 @@ def post_datapoints(client, paths, existing_timeseries):
         current_time_series = []
 
     def convert_float(value_str):
-        return float(value_str.replace(",", "."))
+        try:
+            value_str = float(value_str.replace(",", "."))
+        except ValueError as error:
+            logger.info(error)
+        else:
+            return value_str
+
+    def parse_csv(csv_path):
+        try:
+            df = pandas.read_csv(csv_path, encoding="latin-1", delimiter=";", quotechar='"', skiprows=[1], index_col=0)
+        except FileNotFoundError as file_error:
+            logger.info(file_error)
+        except ValueError as format_error:
+            logger.info(format_error)
+        else:
+            return df
+
 
     for path in paths:
-        df = pandas.read_csv(path, encoding="latin-1", delimiter=";", quotechar='"', skiprows=[1], index_col=0)
-        timestamps = [int(o) * 1000 for o in df.index.tolist()]
-        count_of_data_points = 0
+        df = parse_csv(path)
+        if df is not None:
+            timestamps = [int(o) * 1000 for o in df.index.tolist()]
+            count_of_data_points = 0
 
-        for col in df:
-            if len(current_time_series) >= BATCH_MAX:
+            for col in df:
+                if len(current_time_series) >= BATCH_MAX:
+                    post_datapoints()
+
+                name = str(col.rpartition(":")[2].strip())
+
+                if name in existing_timeseries:
+                    data_points = []
+
+                    for i, value in enumerate(df[col].tolist()):
+                        if pandas.notnull(value):
+                            value = convert_float(value)
+                            if value is not None:
+                                data_points.append(Datapoint(timestamp=timestamps[i], value=value))
+
+                    if data_points:
+                        current_time_series.append(TimeseriesWithDatapoints(name=name, datapoints=data_points))
+                        count_of_data_points += len(data_points)
+
+            if current_time_series:
                 post_datapoints()
 
-            name = str(col.rpartition(":")[2].strip())
-
-            if name in existing_timeseries:
-                data_points = []
-
-                for i, value in enumerate(df[col].tolist()):
-                    if pandas.notnull(value):
-                        data_points.append(Datapoint(timestamp=timestamps[i], value=convert_float(value)))
-
-                if data_points:
-                    current_time_series.append(TimeseriesWithDatapoints(name=name, datapoints=data_points))
-                    count_of_data_points += len(data_points)
-
-        if current_time_series:
-            post_datapoints()
-
-        logger.info("Processed {} datapoints from {}".format(count_of_data_points, path))
+            logger.info("Processed {} datapoints from {}".format(count_of_data_points, path))
 
     return max(path.stat().st_mtime for path in paths)  # Timestamp of most recent modified path
 
