@@ -72,7 +72,6 @@ def post_datapoints(client, paths, existing_timeseries):
         else:
             return df
 
-
     for path in paths:
         df = parse_csv(path)
         if df is not None:
@@ -84,8 +83,9 @@ def post_datapoints(client, paths, existing_timeseries):
                     post_datapoints()
 
                 name = str(col.rpartition(":")[2].strip())
+                external_id = str(col.rpartition(":")[0].strip())
 
-                if name in existing_timeseries:
+                if external_id in existing_timeseries:
                     data_points = []
 
                     for i, value in enumerate(df[col].tolist()):
@@ -95,7 +95,8 @@ def post_datapoints(client, paths, existing_timeseries):
                                 data_points.append(Datapoint(timestamp=timestamps[i], value=value))
 
                     if data_points:
-                        current_time_series.append(TimeseriesWithDatapoints(name=name, datapoints=data_points))
+                        current_time_series.append(TimeseriesWithDatapoints(name=existing_timeseries[external_id], datapoints=data_points))
+                        print(existing_timeseries[external_id], external_id)
                         count_of_data_points += len(data_points)
 
             if current_time_series:
@@ -115,7 +116,7 @@ def find_new_files(last_mtime, base_path):
 
 def extract_datapoints(data_type):
     client = CogniteClient(api_key=API_KEY)
-    existing_timeseries = set(i["name"] for i in client.time_series.get_time_series(autopaging=True).to_json())
+    existing_timeseries = {i["metadata"]["externalID"]:i["name"] for i in client.time_series.get_time_series(include_metadata=True, autopaging=True).to_json()}
 
     if data_type == 'live':
         try:
