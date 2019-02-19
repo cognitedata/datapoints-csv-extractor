@@ -90,7 +90,8 @@ def post_datapoints(client, paths, existing_timeseries):
 def find_new_files(last_mtime, base_path):
     paths = [(p, p.stat().st_mtime) for p in Path(base_path).glob("*.csv")]
     paths.sort(key=itemgetter(1), reverse=True)  # Process newest file first
-    return [p for p, mtime in paths if mtime > last_mtime]
+    t_minus_2 = int(time.time()-2) # Process files more than 2 seconds old
+    return [p for p, mtime in paths if mtime > last_mtime and mtime < t_minus_2]
 
 
 def extract_datapoints(data_type):
