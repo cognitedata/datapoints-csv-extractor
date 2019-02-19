@@ -38,6 +38,14 @@ BATCH_MAX = 1000
 FOLDER_PATH = "../TebisSampleData2/"
 
 
+def get_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--data_type', choices=['live', 'historical'], type=str.lower, \
+        help='Input should be "live" or "historical" to specify data type. \
+        If live data, the earliest time stamp to examine must be specified.')
+    return parser
+
+
 def post_datapoints(client, paths, existing_timeseries):
     current_time_series = []  # List of time series being processed
 
@@ -103,21 +111,17 @@ def extract_datapoints(data_type):
                     time.sleep(5)
         except KeyboardInterrupt:
             logger.warning("Extractor stopped")
-    else if data_type == 'historical':
+    elif data_type == 'historical':
         paths = find_new_files(0, FOLDER_PATH) # All paths in folder, regardless of timestamp
         if paths:
             post_datapoints(client, paths, existing_timeseries)
         logger.info("Extraction complete")
 
 
-# Ensure that user specifies live or historical data
-def parse_arguments():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--data_type', choices=['live', 'historical'], type=str.lower, help='Input should be "live" or "historical" \
-                to specify data type. If live data, the earliest time stamp to examine must be specified.')
-    return parser.parse_args()
-
-
 if __name__ == "__main__":
-    args = parse_arguments()
+
+    # Parse command line arguments
+    parser = get_parser()
+    args = parser.parse_args()
+
     extract_datapoints(args.data_type)
