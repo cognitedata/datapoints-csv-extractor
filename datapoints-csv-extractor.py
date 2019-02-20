@@ -35,15 +35,13 @@ LAST_PROCESSED_TIMESTAMP = 1550076300
 # Maximum number of time series batched at once
 BATCH_MAX = 1000
 
-# Path to folder of CSV files
-FOLDER_PATH = "../TebisNew2/"
-
 
 def get_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--data_type', choices=['live', 'historical'], type=str.lower, required=True, \
-        help='Input should be "live" or "historical" to specify data type. \
-        If live data, the earliest time stamp to examine must be specified.')
+    parser.add_argument("-d", "--data_type", choices=["live", "historical"], type=str.lower, required=True, \
+        help="Input should be 'live' or 'historical' to specify data type. \
+        If live data, the earliest time stamp to examine must be specified.")
+    parser.add_argument("-p", "--path", required=True, help="Folder path of the files processed")
     return parser
 
 
@@ -125,7 +123,7 @@ def find_new_files(last_mtime, base_path):
     return [p for p, mtime in paths if mtime > last_mtime and mtime < t_minus_2]
 
 
-def extract_datapoints(data_type):
+def extract_datapoints(data_type, folder_path):
     client = CogniteClient(api_key=API_KEY)
     existing_timeseries = {i["metadata"]["externalID"]:i["name"] for i in client.time_series.get_time_series(include_metadata=True, autopaging=True).to_json()}
 
@@ -134,7 +132,7 @@ def extract_datapoints(data_type):
             last_timestamp = LAST_PROCESSED_TIMESTAMP
 
             while True:
-                paths = find_new_files(last_timestamp, FOLDER_PATH)
+                paths = find_new_files(last_timestamp, folder_path)
                 if paths:
                     last_timestamp = post_datapoints(client, paths, existing_timeseries)
 
@@ -144,7 +142,7 @@ def extract_datapoints(data_type):
 
                     time.sleep(5)
         elif data_type == 'historical':
-            paths = find_new_files(0, FOLDER_PATH) # All paths in folder, regardless of timestamp
+            paths = find_new_files(0, folder_path) # All paths in folder, regardless of timestamp
             if paths:
                 post_datapoints(client, paths, existing_timeseries)
             logger.info("Extraction complete")
@@ -158,4 +156,4 @@ if __name__ == "__main__":
     parser = get_parser()
     args = parser.parse_args()
 
-    extract_datapoints(args.data_type)
+    extract_datapoints(args.data_type, args.path)
