@@ -1,3 +1,4 @@
+import asyncio
 import argparse
 import logging
 import os
@@ -35,12 +36,12 @@ LAST_PROCESSED_TIMESTAMP = 1550076300
 BATCH_MAX = 1000
 
 # Path to folder of CSV files
-FOLDER_PATH = "../TebisSampleData2/"
+FOLDER_PATH = "../TebisNew2/"
 
 
 def get_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--data_type', choices=['live', 'historical'], type=str.lower, \
+    parser.add_argument('-d', '--data_type', choices=['live', 'historical'], type=str.lower, required=True, \
         help='Input should be "live" or "historical" to specify data type. \
         If live data, the earliest time stamp to examine must be specified.')
     return parser
@@ -72,7 +73,8 @@ def post_datapoints(client, paths, existing_timeseries):
         else:
             return df
 
-    for path in paths:
+    async def process_data(path):
+        nonlocal current_time_series
         df = parse_csv(path)
         if df is not None:
             timestamps = [int(o) * 1000 for o in df.index.tolist()]
@@ -96,13 +98,22 @@ def post_datapoints(client, paths, existing_timeseries):
 
                     if data_points:
                         current_time_series.append(TimeseriesWithDatapoints(name=existing_timeseries[external_id], datapoints=data_points))
-                        print(existing_timeseries[external_id], external_id)
                         count_of_data_points += len(data_points)
 
             if current_time_series:
                 post_datapoints()
 
             logger.info("Processed {} datapoints from {}".format(count_of_data_points, path))
+
+    async def gather_async_tasks(paths):
+        tasks = []
+        for path in paths:
+            tasks.append(process_data(path))
+        results = await asyncio.gather(*tasks)
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(gather_async_tasks(paths))
+    loop.close()
 
     return max(path.stat().st_mtime for path in paths)  # Timestamp of most recent modified path
 
@@ -118,8 +129,10 @@ def extract_datapoints(data_type):
     client = CogniteClient(api_key=API_KEY)
     existing_timeseries = {i["metadata"]["externalID"]:i["name"] for i in client.time_series.get_time_series(include_metadata=True, autopaging=True).to_json()}
 
-    if data_type == 'live':
-        try:
+    try:
+        if data_type == 'live':
+            last_timestamp = LAST_PROCESSED_TIMESTAMP
+
             while True:
                 paths = find_new_files(last_timestamp, FOLDER_PATH)
                 if paths:
@@ -130,13 +143,13 @@ def extract_datapoints(data_type):
                     #    path.unlink()
 
                     time.sleep(5)
-        except KeyboardInterrupt:
-            logger.warning("Extractor stopped")
-    elif data_type == 'historical':
-        paths = find_new_files(0, FOLDER_PATH) # All paths in folder, regardless of timestamp
-        if paths:
-            post_datapoints(client, paths, existing_timeseries)
-        logger.info("Extraction complete")
+        elif data_type == 'historical':
+            paths = find_new_files(0, FOLDER_PATH) # All paths in folder, regardless of timestamp
+            if paths:
+                post_datapoints(client, paths, existing_timeseries)
+            logger.info("Extraction complete")
+    except KeyboardInterrupt:
+        logger.warning("Extractor stopped")
 
 
 if __name__ == "__main__":
