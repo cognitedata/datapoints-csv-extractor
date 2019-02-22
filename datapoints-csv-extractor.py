@@ -12,15 +12,7 @@ import pandas
 from cognite import CogniteClient
 from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(name)s %(levelname)s - %(message)s",
-    handlers=[
-        TimedRotatingFileHandler("extractor.log", when="midnight", backupCount=7),
-        logging.StreamHandler(sys.stdout),
-    ],
-)
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 API_KEY = os.environ.get("COGNITE_EXTRACTOR_API_KEY")
@@ -44,6 +36,16 @@ def get_parser():
     parser.add_argument("-p", "--path", required=True, help="Folder path of the files processed")
     return parser
 
+
+def configure_logger(data_type):
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s - %(message)s",
+        handlers=[
+            TimedRotatingFileHandler(f"extractor-{data_type}.log", when="midnight", backupCount=7),
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
 
 def post_datapoints(client, paths, existing_timeseries):
     current_time_series = []  # List of time series being processed
@@ -128,7 +130,7 @@ def extract_datapoints(data_type, folder_path):
     existing_timeseries = {i["metadata"]["externalID"]:i["name"] for i in client.time_series.get_time_series(include_metadata=True, autopaging=True).to_json()}
 
     try:
-        if data_type == 'live':
+        if data_type == "live":
             last_timestamp = LAST_PROCESSED_TIMESTAMP
 
             while True:
@@ -141,7 +143,7 @@ def extract_datapoints(data_type, folder_path):
                     #    path.unlink()
 
                     time.sleep(5)
-        elif data_type == 'historical':
+        elif data_type == "historical":
             paths = find_new_files(0, folder_path) # All paths in folder, regardless of timestamp
             if paths:
                 post_datapoints(client, paths, existing_timeseries)
@@ -155,5 +157,8 @@ if __name__ == "__main__":
     # Parse command line arguments
     parser = get_parser()
     args = parser.parse_args()
+
+    # Configure logger
+    configure_logger(args.data_type)
 
     extract_datapoints(args.data_type, args.path)
