@@ -8,8 +8,9 @@ from operator import itemgetter
 from pathlib import Path
 
 import pandas
-from cognite import CogniteClient
+from cognite import CogniteClient, APIError
 from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
+from cognite.client.stable.time_series import TimeSeries
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +73,23 @@ def post_datapoints(client, paths, existing_timeseries):
         else:
             return df
 
+    def create_data_points(col_values, timestamps):
+        data_points = []
+
+        for i, value in enumerate(col_values.tolist()):
+            if pandas.notnull(value):
+                value = convert_float(value)
+                if value is not None:
+                    data_points.append(Datapoint(timestamp=timestamps[i], value=value))
+
+        return data_points
+
+    def print_df(col):
+        print(str(col.name.rpartition(":")[2].strip()))
+
     def process_data(path):
         nonlocal current_time_series
+        nonlocal existing_timeseries
         df = parse_csv(path)
         if df is not None:
             timestamps = [int(o) * 1000 for o in df.index.tolist()]
@@ -87,16 +103,21 @@ def post_datapoints(client, paths, existing_timeseries):
                 external_id = str(col.rpartition(":")[0].strip())
 
                 if external_id in existing_timeseries:
-                    data_points = []
-
-                    for i, value in enumerate(df[col].tolist()):
-                        if pandas.notnull(value):
-                            value = convert_float(value)
-                            if value is not None:
-                                data_points.append(Datapoint(timestamp=timestamps[i], value=value))
+                    data_points = create_data_points(df[col], timestamps)
 
                     if data_points:
                         current_time_series.append(TimeseriesWithDatapoints(name=existing_timeseries[external_id], datapoints=data_points))
+                        count_of_data_points += len(data_points)
+
+                else:
+                    new_time_series = TimeSeries(name=name, description="Auto-generated timeseries attached to Placeholder asset, external ID not found", metadata={'externalID': external_id})
+                    client.time_series.post_time_series([new_time_series])
+                    existing_timeseries[external_id] = name
+
+                    data_points = create_data_points(df[col], timestamps)
+
+                    if data_points:
+                        current_time_series.append(TimeseriesWithDatapoints(name=name, datapoints=data_points))
                         count_of_data_points += len(data_points)
 
             if current_time_series:
@@ -117,9 +138,12 @@ def find_new_files(last_mtime, base_path):
     return [p for p, mtime in paths if mtime > last_mtime and mtime < t_minus_2]
 
 
-def extract_datapoints(data_type, folder_path):
-    client = CogniteClient(api_key=API_KEY)
-    existing_timeseries = {i["metadata"]["externalID"]:i["name"] for i in client.time_series.get_time_series(include_metadata=True, autopaging=True).to_json()}
+def extract_datapoints(client, existing_timeseries, data_type, folder_path):
+    try:
+        client.login.status()
+    except APIError as error:
+        logger.warning(error)
+        client = CogniteClient(api_key=API_KEY)
 
     try:
         if data_type == "live":
@@ -155,4 +179,8 @@ if __name__ == "__main__":
     # Configure logger
     configure_logger(data_type)
 
-    extract_datapoints(data_type, args.path)
+    # Establish API connection and get initial dictionary of existing timeseries
+    client = CogniteClient(api_key=API_KEY)
+    existing_timeseries = {i["metadata"]["externalID"]:i["name"] for i in client.time_series.get_time_series(include_metadata=True, autopaging=True).to_json()}
+
+    extract_datapoints(client, existing_timeseries, data_type, args.path)
