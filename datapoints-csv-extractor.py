@@ -1,4 +1,3 @@
-import asyncio
 import argparse
 import logging
 import os
@@ -13,7 +12,6 @@ from cognite import CogniteClient
 from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
 
 logger = logging.getLogger(__name__)
-
 
 API_KEY = os.environ.get("COGNITE_EXTRACTOR_API_KEY")
 if not API_KEY:
@@ -30,8 +28,8 @@ BATCH_MAX = 1000
 
 def get_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--data_type", choices=["live", "historical"], type=str.lower, required=True, \
-        help="Input should be 'live' or 'historical' to specify data type. \
+    parser.add_argument("-l", "--live", action='store_true', \
+        help="By default, historical data will be processed. Use '-l' tag to process live data. \
         If live data, the earliest time stamp to examine must be specified.")
     parser.add_argument("-p", "--path", required=True, help="Folder path of the files processed")
     return parser
@@ -47,10 +45,11 @@ def configure_logger(data_type):
         ],
     )
 
+
 def post_datapoints(client, paths, existing_timeseries):
     current_time_series = []  # List of time series being processed
 
-    def post_datapoints():
+    def post_datapoints_request():
         nonlocal current_time_series
         client.datapoints.post_multi_time_series_datapoints(current_time_series)
         current_time_series = []
@@ -73,7 +72,7 @@ def post_datapoints(client, paths, existing_timeseries):
         else:
             return df
 
-    async def process_data(path):
+    def process_data(path):
         nonlocal current_time_series
         df = parse_csv(path)
         if df is not None:
@@ -82,7 +81,7 @@ def post_datapoints(client, paths, existing_timeseries):
 
             for col in df:
                 if len(current_time_series) >= BATCH_MAX:
-                    post_datapoints()
+                    post_datapoints_request()
 
                 name = str(col.rpartition(":")[2].strip())
                 external_id = str(col.rpartition(":")[0].strip())
@@ -101,19 +100,12 @@ def post_datapoints(client, paths, existing_timeseries):
                         count_of_data_points += len(data_points)
 
             if current_time_series:
-                post_datapoints()
+                post_datapoints_request()
 
             logger.info("Processed {} datapoints from {}".format(count_of_data_points, path))
 
-    async def gather_async_tasks(paths):
-        tasks = []
-        for path in paths:
-            tasks.append(process_data(path))
-        results = await asyncio.gather(*tasks)
-
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(gather_async_tasks(paths))
-    loop.close()
+    for path in paths:
+        process_data(path)
 
     return max(path.stat().st_mtime for path in paths)  # Timestamp of most recent modified path
 
@@ -158,7 +150,9 @@ if __name__ == "__main__":
     parser = get_parser()
     args = parser.parse_args()
 
-    # Configure logger
-    configure_logger(args.data_type)
+    data_type = "live" if args.live else "historical"
 
-    extract_datapoints(args.data_type, args.path)
+    # Configure logger
+    configure_logger(data_type)
+
+    extract_datapoints(data_type, args.path)
