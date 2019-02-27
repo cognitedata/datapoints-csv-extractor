@@ -54,12 +54,19 @@ def configure_logger(data_type, log_path):
     )
 
 
+def post_request(endpoint, parameter):
+    try:
+        endpoint(parameter)
+    except Exception as error:
+        logger.info(error)
+
+
 def post_datapoints(client, paths, existing_time_series):
     current_time_series = []  # List of time series being processed
 
     def post_datapoints_request():
         nonlocal current_time_series
-        client.datapoints.post_multi_time_series_datapoints(current_time_series)
+        post_request(client.datapoints.post_multi_time_series_datapoints, current_time_series)
         current_time_series = []
 
     def convert_float(value_string):
@@ -121,7 +128,7 @@ def post_datapoints(client, paths, existing_time_series):
                         description="Auto-generated time series attached to Placeholder asset, external ID not found",
                         metadata={"externalID": external_id},
                     )
-                    client.time_series.post_time_series([new_time_series])
+                    post_request(client.time_series.post_time_series, [new_time_series])
                     existing_time_series[external_id] = name
 
                     datapoints = create_datapoints(df[col], timestamps)
@@ -135,6 +142,7 @@ def post_datapoints(client, paths, existing_time_series):
 
             logger.info("Processed {} datapoints from {}".format(count_of_datapoints, path))
 
+            # Delete file after processing
             with contextlib.suppress(FileNotFoundError):
                 path.unlink()
 
