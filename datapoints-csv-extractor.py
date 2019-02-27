@@ -15,7 +15,7 @@ from cognite.client.stable.time_series import TimeSeries
 logger = logging.getLogger(__name__)
 
 # Global variable for last timestamp processed
-LAST_PROCESSED_TIMESTAMP = 1_550_076_300
+LAST_PROCESSED_TIMESTAMP = 1_551_265_200
 
 # Maximum number of time series batched at once
 BATCH_MAX = 1000
@@ -54,12 +54,19 @@ def _configure_logger(folder_path, live_processing):
     )
 
 
+def post_request(endpoint, parameter):
+    try:
+        endpoint(parameter)
+    except Exception as error:
+        logger.info(error)
+
+
 def post_datapoints(client, paths, existing_time_series, failed_path):
     current_time_series = []  # List of time series being processed
 
     def post_datapoints_request():
         nonlocal current_time_series
-        client.datapoints.post_multi_time_series_datapoints(current_time_series)
+        post_request(client.datapoints.post_multi_time_series_datapoints, current_time_series)
         current_time_series = []
 
     def convert_float(value_string):
@@ -121,7 +128,7 @@ def post_datapoints(client, paths, existing_time_series, failed_path):
                         description="Auto-generated time series attached to Placeholder asset, external ID not found",
                         metadata={"externalID": external_id},
                     )
-                    client.time_series.post_time_series([new_time_series])
+                    post_request(client.time_series.post_time_series, [new_time_series])
                     existing_time_series[external_id] = name
 
                     datapoints = create_datapoints(df[col], timestamps)
@@ -153,9 +160,7 @@ def find_new_files(last_mtime, base_path):
     all_paths = [(p, p.stat().st_mtime) for p in base_path.glob("*.csv")]
     all_paths.sort(key=itemgetter(1), reverse=True)  # Process newest file first
     t_minus_2 = int(time.time() - 2)  # Process files more than 2 seconds old
-    relevant_paths = [p for p, mtime in all_paths if mtime > last_mtime and mtime < t_minus_2]
-    most_recent_timestamp = max(path.stat().st_mtime for path in relevant_paths) if relevant_paths else last_mtime
-    return relevant_paths, most_recent_timestamp
+    return [p for p, mtime in all_paths if mtime > last_mtime and mtime < t_minus_2]
 
 
 def extract_datapoints(client, existing_time_series, process_live_data: bool, folder_path, failed_path):
@@ -163,13 +168,14 @@ def extract_datapoints(client, existing_time_series, process_live_data: bool, fo
         if process_live_data:
             last_timestamp = LAST_PROCESSED_TIMESTAMP
             while True:
-                paths, last_timestamp = find_new_files(last_timestamp, folder_path)
+                paths = find_new_files(last_timestamp, folder_path)
                 if paths:
+                    last_timestamp = max(path.stat().st_mtime for path in paths) # Timestamp of most recent modified path
                     post_datapoints(client, paths, existing_time_series, failed_path)
                 time.sleep(5)
 
         else:
-            paths, _ = find_new_files(0, folder_path)  # All paths in folder, regardless of timestamp
+            paths = find_new_files(0, folder_path)  # All paths in folder, regardless of timestamp
             if paths:
                 post_datapoints(client, paths, existing_time_series, failed_path)
             else:
