@@ -1,5 +1,4 @@
 import argparse
-import contextlib
 import logging
 import os
 import sys
@@ -16,7 +15,7 @@ from cognite.client.stable.time_series import TimeSeries
 logger = logging.getLogger(__name__)
 
 # Global variable for last timestamp processed
-LAST_PROCESSED_TIMESTAMP = 1_550_076_300
+LAST_PROCESSED_TIMESTAMP = 1_551_265_200
 
 # Maximum number of time series batched at once
 BATCH_MAX = 1000
