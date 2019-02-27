@@ -14,12 +14,6 @@ from cognite.client.stable.time_series import TimeSeries
 
 logger = logging.getLogger(__name__)
 
-API_KEY = os.environ.get("COGNITE_EXTRACTOR_API_KEY")
-if not API_KEY:
-    print("COME ON JAN&SAM, YOU FORGOT THE API KEY!")
-    sys.exit(2)
-
-
 # Global variable for last timestamp processed
 LAST_PROCESSED_TIMESTAMP = 1_550_076_300
 
@@ -27,22 +21,28 @@ LAST_PROCESSED_TIMESTAMP = 1_550_076_300
 BATCH_MAX = 1000
 
 
-def get_parser():
+def _parse_cli_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-l",
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
         "--live",
+        "-l",
         action="store_true",
         help="By default, historical data will be processed. Use '-l' tag to process live data. \
         If live data, the earliest time stamp to examine must be specified.",
     )
-    parser.add_argument("-p", "--folder", required=True, help="Folder path of the files processed")
-    parser.add_argument("-o", "--log", required=True, help="Folder path of logfile")
-    return parser
+    group.add_argument(
+        "--historical", default=True, action="store_true", help="Process historical data instead of live"
+    )
+    parser.add_argument("--input", "-i", required=True, help="Folder path of the files to process")
+    parser.add_argument("--log", "-d", required=False, default="log", help="Optional, log directory")
+    parser.add_argument("--apikey", "-k", required=False, help="Optional, CDP API KEY")
+    return parser.parse_args()
 
 
-def configure_logger(data_type, log_path):
-    log_file = os.path.join(log_path, f"extractor-{data_type}.log")
+def _configure_logger(folder_path, live_processing):
+    os.makedirs(folder_path, exist_ok=True)
+    log_file = os.path.join(folder_path, "extractor-{}.log".format("live" if live_processing else "historical"))
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s - %(message)s",
@@ -135,7 +135,15 @@ def post_datapoints(client, paths, existing_time_series):
             logger.info("Processed {} datapoints from {}".format(count_of_datapoints, path))
 
     for path in paths:
-        process_data(path)
+        try:
+            process_data(path)
+        except Exception as exc:
+            logger.error("Parsing of file {} failed: {!s}".format(path, exc))
+        else:
+            try:
+                path.unlink()
+            except IOError as exc:
+                logger.error("Failed to delete file {}: {!s}".format(path, exc))
 
     return max(path.stat().st_mtime for path in paths)  # Timestamp of most recent modified path
 
@@ -148,12 +156,6 @@ def find_new_files(last_mtime, base_path):
 
 
 def extract_datapoints(client, existing_time_series, data_type, folder_path):
-    try:
-        client.login.status()
-    except APIError as error:
-        logger.warning(error)
-        client = CogniteClient(api_key=API_KEY)
-
     try:
         if data_type == "live":
             last_timestamp = LAST_PROCESSED_TIMESTAMP
@@ -177,21 +179,27 @@ def extract_datapoints(client, existing_time_series, data_type, folder_path):
         logger.warning("Extractor stopped")
 
 
-if __name__ == "__main__":
-    # Parse command line arguments
-    parser = get_parser()
-    args = parser.parse_args()
-
-    data_type = "live" if args.live else "historical"
-
-    # Configure logger
-    configure_logger(data_type, args.log)
+def main(args):
+    _configure_logger(args.log, args.live)
+    api_key = args.apikey if args.apikey else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
+    args.apikey = ""  # Don't log the api key if given through CLI
+    logger.info("Extractor configured with {}".format(args))
 
     # Establish API connection and get initial dictionary of existing time series
-    client = CogniteClient(api_key=API_KEY)
+    try:
+        client = CogniteClient(api_key=api_key)
+        client.login.status()
+    except APIError as exc:
+        logger.error("Failed to create CDP client: {!s}".format(exc))
+        client = CogniteClient(api_key=api_key)
+
     existing_time_series = {
         i["metadata"]["externalID"]: i["name"]
         for i in client.time_series.get_time_series(include_metadata=True, autopaging=True).to_json()
     }
 
-    extract_datapoints(client, existing_time_series, data_type, args.folder)
+    extract_datapoints(client, existing_time_series, args.live, args.input)
+
+
+if __name__ == "__main__":
+    main(_parse_cli_args())
