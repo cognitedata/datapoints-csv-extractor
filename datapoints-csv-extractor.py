@@ -155,26 +155,21 @@ def find_new_files(last_mtime, base_path):
     return [p for p, mtime in paths if mtime > last_mtime and mtime < t_minus_2]
 
 
-def extract_datapoints(client, existing_time_series, data_type, folder_path):
+def extract_datapoints(client, existing_time_series, process_live_data: bool, folder_path: str):
     try:
-        if data_type == "live":
+        if process_live_data:
             last_timestamp = LAST_PROCESSED_TIMESTAMP
-
             while True:
                 paths = find_new_files(last_timestamp, folder_path)
                 if paths:
                     last_timestamp = post_datapoints(client, paths, existing_time_series)
+                time.sleep(5)
 
-                    # logger.info("Removing processed files {}".format(', '.join(p.name for p in paths)))
-                    # for path in paths:
-                    #    path.unlink()
-
-                    time.sleep(5)
-        elif data_type == "historical":
+        else:
             paths = find_new_files(0, folder_path)  # All paths in folder, regardless of timestamp
             if paths:
                 post_datapoints(client, paths, existing_time_series)
-            logger.info("Extraction complete")
+        logger.info("Extraction complete")
     except KeyboardInterrupt:
         logger.warning("Extractor stopped")
 
