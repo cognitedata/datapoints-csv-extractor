@@ -2,4 +2,5 @@
 
 *.log*
 
+src/
 .ipynb_checkpoints/
