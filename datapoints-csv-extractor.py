@@ -8,7 +8,7 @@ from operator import itemgetter
 from pathlib import Path
 
 import pandas
-from cognite import CogniteClient, APIError
+from cognite import APIError, CogniteClient
 from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
 from cognite.client.stable.time_series import TimeSeries
 
@@ -21,7 +21,7 @@ if not API_KEY:
 
 
 # Global variable for last timestamp processed
-LAST_PROCESSED_TIMESTAMP = 1550076300
+LAST_PROCESSED_TIMESTAMP = 1_550_076_300
 
 # Maximum number of time series batched at once
 BATCH_MAX = 1000
@@ -29,9 +29,13 @@ BATCH_MAX = 1000
 
 def get_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-l", "--live", action='store_true', \
+    parser.add_argument(
+        "-l",
+        "--live",
+        action="store_true",
         help="By default, historical data will be processed. Use '-l' tag to process live data. \
-        If live data, the earliest time stamp to examine must be specified.")
+        If live data, the earliest time stamp to examine must be specified.",
+    )
     parser.add_argument("-p", "--path", required=True, help="Folder path of the files processed")
     return parser
 
@@ -106,11 +110,17 @@ def post_datapoints(client, paths, existing_timeseries):
                     data_points = create_data_points(df[col], timestamps)
 
                     if data_points:
-                        current_time_series.append(TimeseriesWithDatapoints(name=existing_timeseries[external_id], datapoints=data_points))
+                        current_time_series.append(
+                            TimeseriesWithDatapoints(name=existing_timeseries[external_id], datapoints=data_points)
+                        )
                         count_of_data_points += len(data_points)
 
                 else:
-                    new_time_series = TimeSeries(name=name, description="Auto-generated timeseries attached to Placeholder asset, external ID not found", metadata={'externalID': external_id})
+                    new_time_series = TimeSeries(
+                        name=name,
+                        description="Auto-generated timeseries attached to Placeholder asset, external ID not found",
+                        metadata={"externalID": external_id},
+                    )
                     client.time_series.post_time_series([new_time_series])
                     existing_timeseries[external_id] = name
 
@@ -134,7 +144,7 @@ def post_datapoints(client, paths, existing_timeseries):
 def find_new_files(last_mtime, base_path):
     paths = [(p, p.stat().st_mtime) for p in Path(base_path).glob("*.csv")]
     paths.sort(key=itemgetter(1), reverse=True)  # Process newest file first
-    t_minus_2 = int(time.time()-2) # Process files more than 2 seconds old
+    t_minus_2 = int(time.time() - 2)  # Process files more than 2 seconds old
     return [p for p, mtime in paths if mtime > last_mtime and mtime < t_minus_2]
 
 
@@ -160,7 +170,7 @@ def extract_datapoints(client, existing_timeseries, data_type, folder_path):
 
                     time.sleep(5)
         elif data_type == "historical":
-            paths = find_new_files(0, folder_path) # All paths in folder, regardless of timestamp
+            paths = find_new_files(0, folder_path)  # All paths in folder, regardless of timestamp
             if paths:
                 post_datapoints(client, paths, existing_timeseries)
             logger.info("Extraction complete")
@@ -169,7 +179,6 @@ def extract_datapoints(client, existing_timeseries, data_type, folder_path):
 
 
 if __name__ == "__main__":
-
     # Parse command line arguments
     parser = get_parser()
     args = parser.parse_args()
@@ -181,6 +190,9 @@ if __name__ == "__main__":
 
     # Establish API connection and get initial dictionary of existing timeseries
     client = CogniteClient(api_key=API_KEY)
-    existing_timeseries = {i["metadata"]["externalID"]:i["name"] for i in client.time_series.get_time_series(include_metadata=True, autopaging=True).to_json()}
+    existing_timeseries = {
+        i["metadata"]["externalID"]: i["name"]
+        for i in client.time_series.get_time_series(include_metadata=True, autopaging=True).to_json()
+    }
 
     extract_datapoints(client, existing_timeseries, data_type, args.path)
