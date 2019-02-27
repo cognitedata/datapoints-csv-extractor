@@ -35,6 +35,7 @@ def _parse_cli_args():
         "--historical", default=True, action="store_true", help="Process historical data instead of live"
     )
     parser.add_argument("--input", "-i", required=True, help="Folder path of the files to process")
+    parser.add_argument("--failed", "-f", required=False, default="failed", help="Where to put inputs that failed")
     parser.add_argument("--log", "-d", required=False, default="log", help="Optional, log directory")
     parser.add_argument("--apikey", "-k", required=False, help="Optional, CDP API KEY")
     return parser.parse_args()
@@ -53,7 +54,7 @@ def _configure_logger(folder_path, live_processing):
     )
 
 
-def post_datapoints(client, paths, existing_time_series):
+def post_datapoints(client, paths, existing_time_series, failed_path):
     current_time_series = []  # List of time series being processed
 
     def post_datapoints_request():
@@ -136,39 +137,43 @@ def post_datapoints(client, paths, existing_time_series):
 
     for path in paths:
         try:
-            process_data(path)
-        except Exception as exc:
-            logger.error("Parsing of file {} failed: {!s}".format(path, exc))
-        else:
             try:
+                process_data(path)
+            except Exception as exc:
+                logger.error("Parsing of file {} failed: {!s}".format(path, exc))
+                failed_path.mkdir(parents=True, exist_ok=True)
+                path.replace(failed_path.joinpath(path.name))
+            else:
                 path.unlink()
-            except IOError as exc:
-                logger.error("Failed to delete file {}: {!s}".format(path, exc))
-
-    return max(path.stat().st_mtime for path in paths)  # Timestamp of most recent modified path
+        except IOError as exc:
+            logger.error("Failed to delete/move file {}: {!s}".format(path, exc))
 
 
 def find_new_files(last_mtime, base_path):
-    paths = [(p, p.stat().st_mtime) for p in Path(base_path).glob("*.csv")]
-    paths.sort(key=itemgetter(1), reverse=True)  # Process newest file first
+    all_paths = [(p, p.stat().st_mtime) for p in base_path.glob("*.csv")]
+    all_paths.sort(key=itemgetter(1), reverse=True)  # Process newest file first
     t_minus_2 = int(time.time() - 2)  # Process files more than 2 seconds old
-    return [p for p, mtime in paths if mtime > last_mtime and mtime < t_minus_2]
+    relevant_paths = [p for p, mtime in all_paths if mtime > last_mtime and mtime < t_minus_2]
+    most_recent_timestamp = max(path.stat().st_mtime for path in relevant_paths) if relevant_paths else last_mtime
+    return relevant_paths, most_recent_timestamp
 
 
-def extract_datapoints(client, existing_time_series, process_live_data: bool, folder_path: str):
+def extract_datapoints(client, existing_time_series, process_live_data: bool, folder_path, failed_path):
     try:
         if process_live_data:
             last_timestamp = LAST_PROCESSED_TIMESTAMP
             while True:
-                paths = find_new_files(last_timestamp, folder_path)
+                paths, last_timestamp = find_new_files(last_timestamp, folder_path)
                 if paths:
-                    last_timestamp = post_datapoints(client, paths, existing_time_series)
+                    post_datapoints(client, paths, existing_time_series, failed_path)
                 time.sleep(5)
 
         else:
-            paths = find_new_files(0, folder_path)  # All paths in folder, regardless of timestamp
+            paths, _ = find_new_files(0, folder_path)  # All paths in folder, regardless of timestamp
             if paths:
-                post_datapoints(client, paths, existing_time_series)
+                post_datapoints(client, paths, existing_time_series, failed_path)
+            else:
+                logger.info("Found no files to process in {}".format(folder_path))
         logger.info("Extraction complete")
     except KeyboardInterrupt:
         logger.warning("Extractor stopped")
@@ -193,7 +198,7 @@ def main(args):
         for i in client.time_series.get_time_series(include_metadata=True, autopaging=True).to_json()
     }
 
-    extract_datapoints(client, existing_time_series, args.live, args.input)
+    extract_datapoints(client, existing_time_series, args.live, Path(args.input), Path(args.failed))
 
 
 if __name__ == "__main__":
