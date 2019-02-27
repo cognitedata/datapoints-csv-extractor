@@ -32,16 +32,18 @@ def get_parser():
     parser.add_argument("-l", "--live", action='store_true', \
         help="By default, historical data will be processed. Use '-l' tag to process live data. \
         If live data, the earliest time stamp to examine must be specified.")
-    parser.add_argument("-p", "--path", required=True, help="Folder path of the files processed")
+    parser.add_argument("-p", "--folder", required=True, help="Folder path of the files processed")
+    parser.add_argument("-o", "--log", required=True, help="Folder path of logfile")
     return parser
 
 
-def configure_logger(data_type):
+def configure_logger(data_type, log_path):
+    log_file = os.path.join(log_path, f"extractor-{data_type}.log")
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s - %(message)s",
         handlers=[
-            TimedRotatingFileHandler(f"extractor-{data_type}.log", when="midnight", backupCount=7),
+            TimedRotatingFileHandler(log_file, when="midnight", backupCount=7),
             logging.StreamHandler(sys.stdout),
         ],
     )
@@ -174,10 +176,10 @@ if __name__ == "__main__":
     data_type = "live" if args.live else "historical"
 
     # Configure logger
-    configure_logger(data_type)
+    configure_logger(data_type, args.log)
 
     # Establish API connection and get initial dictionary of existing time series
     client = CogniteClient(api_key=API_KEY)
     existing_time_series = {i["metadata"]["externalID"]:i["name"] for i in client.time_series.get_time_series(include_metadata=True, autopaging=True).to_json()}
 
-    extract_datapoints(client, existing_time_series, data_type, args.path)
+    extract_datapoints(client, existing_time_series, data_type, args.folder)
