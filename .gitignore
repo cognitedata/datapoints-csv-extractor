@@ -3,6 +3,7 @@
 tmp/
 *.log*
 src/
+failed/
 .ipynb_checkpoints/
 
 # Byte-compiled / optimized / DLL files
