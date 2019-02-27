@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import logging
 import os
 import sys
@@ -21,7 +22,7 @@ if not API_KEY:
 
 
 # Global variable for last timestamp processed
-LAST_PROCESSED_TIMESTAMP = 1_550_076_300
+LAST_PROCESSED_TIMESTAMP = 1_450_076_300
 
 # Maximum number of time series batched at once
 BATCH_MAX = 1000
@@ -134,10 +135,11 @@ def post_datapoints(client, paths, existing_time_series):
 
             logger.info("Processed {} datapoints from {}".format(count_of_datapoints, path))
 
+            with contextlib.suppress(FileNotFoundError):
+                path.unlink()
+
     for path in paths:
         process_data(path)
-
-    return max(path.stat().st_mtime for path in paths)  # Timestamp of most recent modified path
 
 
 def find_new_files(last_mtime, base_path):
@@ -161,11 +163,8 @@ def extract_datapoints(client, existing_time_series, data_type, folder_path):
             while True:
                 paths = find_new_files(last_timestamp, folder_path)
                 if paths:
-                    last_timestamp = post_datapoints(client, paths, existing_time_series)
-
-                    # logger.info("Removing processed files {}".format(', '.join(p.name for p in paths)))
-                    # for path in paths:
-                    #    path.unlink()
+                    last_timestamp = max(path.stat().st_mtime for path in paths) # Timestamp of most recent modified path
+                    post_datapoints(client, paths, existing_time_series)
 
                     time.sleep(5)
         elif data_type == "historical":
