@@ -160,7 +160,7 @@ def find_new_files(last_mtime, base_path):
     all_paths = [(p, p.stat().st_mtime) for p in base_path.glob("*.csv")]
     all_paths.sort(key=itemgetter(1), reverse=True)  # Process newest file first
     t_minus_2 = int(time.time() - 2)  # Process files more than 2 seconds old
-    return [p for p, mtime in all_paths if mtime > last_mtime and mtime < t_minus_2]
+    return [p for p, mtime in all_paths if last_mtime < mtime < t_minus_2]
 
 
 def extract_datapoints(client, existing_time_series, process_live_data: bool, folder_path, failed_path):
@@ -170,7 +170,7 @@ def extract_datapoints(client, existing_time_series, process_live_data: bool, fo
             while True:
                 paths = find_new_files(last_timestamp, folder_path)
                 if paths:
-                    last_timestamp = max(path.stat().st_mtime for path in paths) # Timestamp of most recent modified path
+                    last_timestamp = max(path.stat().st_mtime for path in paths)  # Timestamp of most recent modified
                     post_datapoints(client, paths, existing_time_series, failed_path)
                 time.sleep(5)
 
