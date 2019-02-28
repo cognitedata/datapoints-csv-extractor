@@ -14,9 +14,6 @@ from cognite.client.stable.time_series import TimeSeries
 
 logger = logging.getLogger(__name__)
 
-# Global variable for last timestamp processed
-LAST_PROCESSED_TIMESTAMP = 1_551_265_200
-
 # Maximum number of time series batched at once
 BATCH_MAX = 1000
 
@@ -28,13 +25,13 @@ def _parse_cli_args():
         "--live",
         "-l",
         action="store_true",
-        help="By default, historical data will be processed. Use '-l' tag to process live data. \
-        If live data, the earliest time stamp to examine must be specified.",
+        help="By default, historical data will be processed. Use '--live' to process live data",
     )
     group.add_argument(
         "--historical", default=True, action="store_true", help="Process historical data instead of live"
     )
     parser.add_argument("--input", "-i", required=True, help="Folder path of the files to process")
+    parser.add_argument("--timestamp", "-t", required=False, type=int, help="Optional, process files older than this")
     parser.add_argument("--log", "-d", required=False, default="log", help="Optional, log directory")
     parser.add_argument(
         "--move-failed",
@@ -103,7 +100,7 @@ def process_files(client, paths, time_series_cache, failed_path):
 
         if df is not None:
             timestamps = [int(o) * 1000 for o in df.index.tolist()]
-            count_of_datapoints = 0
+            count_of_data_points = 0
 
             for col in df:
                 if len(current_time_series) >= BATCH_MAX:
@@ -120,7 +117,7 @@ def process_files(client, paths, time_series_cache, failed_path):
                         current_time_series.append(
                             TimeseriesWithDatapoints(name=existing_time_series[external_id], datapoints=datapoints)
                         )
-                        count_of_datapoints += len(datapoints)
+                        count_of_data_points += len(datapoints)
 
                 else:
                     new_time_series = TimeSeries(
@@ -135,12 +132,12 @@ def process_files(client, paths, time_series_cache, failed_path):
 
                     if datapoints:
                         current_time_series.append(TimeseriesWithDatapoints(name=name, datapoints=datapoints))
-                        count_of_datapoints += len(datapoints)
+                        count_of_data_points += len(datapoints)
 
             if current_time_series:
                 _log_error(client.datapoints.post_multi_time_series_datapoints, current_time_series)
 
-            logger.info("Processed {} datapoints from {}".format(count_of_datapoints, path))
+            logger.info("Processed {} datapoints from {}".format(count_of_data_points, path))
 
     for path in paths:
         try:
@@ -157,11 +154,11 @@ def process_files(client, paths, time_series_cache, failed_path):
             logger.error("Failed to delete/move file {}: {!s}".format(path, exc))
 
 
-def find_new_files(last_mtime, base_path, newest_first=True):
+def find_files_in_path(base_path, start_timestamp: int, newest_first: bool = True):
     all_paths = [(p, p.stat().st_mtime) for p in base_path.glob("*.csv")]
     all_paths.sort(key=itemgetter(1), reverse=newest_first)  # Process newest file first
     t_minus_2 = int(time.time() - 2)  # Process files more than 2 seconds old
-    return [p for p, mtime in all_paths if last_mtime < mtime < t_minus_2]
+    return [p for p, mtime in all_paths if start_timestamp < mtime < t_minus_2]
 
 
 def get_all_time_series(client):
@@ -181,19 +178,17 @@ def get_all_time_series(client):
     return {i["metadata"]["externalID"]: i["name"] for i in res.to_json() if "externalID" in i["metadata"]}
 
 
-def extract_data_points(client, time_series_cache, process_live_data: bool, folder_path, failed_path):
+def extract_data_points(client, time_series_cache, process_live_data: bool, start_timestamp, folder_path, failed_path):
     try:
         if process_live_data:
-            last_timestamp = LAST_PROCESSED_TIMESTAMP
             while True:
-                paths = find_new_files(last_timestamp, folder_path)
+                paths = find_files_in_path(folder_path, start_timestamp)
                 if paths:
-                    last_timestamp = max(path.stat().st_mtime for path in paths)  # Timestamp of most recent modified
                     process_files(client, paths[:20], time_series_cache, failed_path)  # Only 20 most recent
                 time.sleep(5)
 
         else:
-            paths = find_new_files(0, folder_path, newest_first=False)  # All paths in folder, regardless of timestamp
+            paths = find_files_in_path(folder_path, start_timestamp, newest_first=False)
             if paths:
                 process_files(client, paths, time_series_cache, failed_path)
             else:
@@ -209,6 +204,7 @@ def main(args):
     api_key = args.api_key if args.api_key else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
     args.api_key = ""  # Don't log the api key if given through CLI
     logger.info("Extractor configured with {}".format(args))
+    start_timestamp = args.timestamp if args.timestamp else 0
 
     input_path = Path(args.input)
     if not input_path.exists():
@@ -223,7 +219,7 @@ def main(args):
         logger.error("Failed to create CDP client: {!s}".format(exc))
         client = CogniteClient(api_key=api_key)
 
-    extract_data_points(client, get_all_time_series(client), args.live, input_path, failed_path)
+    extract_data_points(client, get_all_time_series(client), args.live, start_timestamp, input_path, failed_path)
 
 
 if __name__ == "__main__":
