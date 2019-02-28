@@ -19,6 +19,7 @@ BATCH_MAX = 1000
 
 
 def _parse_cli_args():
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
@@ -44,9 +45,10 @@ def _parse_cli_args():
     return parser.parse_args()
 
 
-def _configure_logger(folder_path, live_processing):
-    os.makedirs(folder_path, exist_ok=True)
-    log_file = os.path.join(folder_path, "extractor-{}.log".format("live" if live_processing else "historical"))
+def _configure_logger(folder_path, live_processing: bool):
+    """Create 'folder_path' and configure logging to file as well as console."""
+    folder_path.mkdir(parents=True, exist_ok=True)
+    log_file = folder_path.joinpath("extractor-{}.log".format("live" if live_processing else "historical"))
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s - %(message)s",
@@ -58,6 +60,7 @@ def _configure_logger(folder_path, live_processing):
 
 
 def _log_error(func, *args, **vargs):
+    """Call 'func' with args, then log if an exception was raised."""
     try:
         func(*args, **vargs)
     except Exception as error:
@@ -65,6 +68,7 @@ def _log_error(func, *args, **vargs):
 
 
 def create_data_points(values, timestamps):
+    """Return CDP Datapoint object for 'values' and 'timestamps'."""
     data_points = []
 
     for i, value_string in enumerate(values):
@@ -80,6 +84,7 @@ def create_data_points(values, timestamps):
 
 
 def process_csv_file(client, csv_path, existing_time_series):
+    """Find datapoints inside a single csv file and send it to CDP."""
     df = None
     try:
         df = pandas.read_csv(csv_path, encoding="latin-1", delimiter=";", quotechar='"', skiprows=[1], index_col=0)
@@ -198,7 +203,7 @@ def extract_data_points(client, time_series_cache, live_mode: bool, start_timest
 
 
 def main(args):
-    _configure_logger(args.log, args.live)
+    _configure_logger(Path(args.log), args.live)
 
     api_key = args.api_key if args.api_key else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
     args.api_key = ""  # Don't log the api key if given through CLI
