@@ -35,9 +35,15 @@ def _parse_cli_args():
         "--historical", default=True, action="store_true", help="Process historical data instead of live"
     )
     parser.add_argument("--input", "-i", required=True, help="Folder path of the files to process")
-    parser.add_argument("--failed", "-f", required=False, default="failed", help="Where to put inputs that failed")
     parser.add_argument("--log", "-d", required=False, default="log", help="Optional, log directory")
-    parser.add_argument("--apikey", "-k", required=False, help="Optional, CDP API KEY")
+    parser.add_argument(
+        "--move-failed",
+        "-m",
+        required=False,
+        action="store_true",
+        help="Optional, move failed csv files to subfolder failed",
+    )
+    parser.add_argument("--api-key", "-k", required=False, help="Optional, CDP API KEY")
     return parser.parse_args()
 
 
@@ -54,21 +60,14 @@ def _configure_logger(folder_path, live_processing):
     )
 
 
-def post_request(endpoint, parameter):
+def _log_error(endpoint, parameter):
     try:
         endpoint(parameter)
     except Exception as error:
         logger.info(error)
 
 
-def post_datapoints(client, paths, existing_time_series, failed_path):
-    current_time_series = []  # List of time series being processed
-
-    def post_datapoints_request():
-        nonlocal current_time_series
-        post_request(client.datapoints.post_multi_time_series_datapoints, current_time_series)
-        current_time_series = []
-
+def post_datapoints(client, paths, time_series_cache, failed_path):
     def convert_float(value_string):
         try:
             value_float = float(value_string.replace(",", "."))
@@ -80,10 +79,10 @@ def post_datapoints(client, paths, existing_time_series, failed_path):
     def parse_csv(csv_path):
         try:
             df = pandas.read_csv(csv_path, encoding="latin-1", delimiter=";", quotechar='"', skiprows=[1], index_col=0)
-        except FileNotFoundError as file_error:
-            logger.info(file_error)
+        except IOError as file_error:
+            logger.warning(file_error)
         except ValueError as format_error:
-            logger.info(format_error)
+            logger.warning(format_error)
         else:
             return df
 
@@ -98,20 +97,21 @@ def post_datapoints(client, paths, existing_time_series, failed_path):
 
         return datapoints
 
-    def process_data(path):
-        nonlocal current_time_series
-        nonlocal existing_time_series
-        df = parse_csv(path)
+    def process_data(csv_path, existing_time_series):
+        current_time_series = []  # List of time series being processed
+        df = parse_csv(csv_path)
+
         if df is not None:
             timestamps = [int(o) * 1000 for o in df.index.tolist()]
             count_of_datapoints = 0
 
             for col in df:
                 if len(current_time_series) >= BATCH_MAX:
-                    post_datapoints_request()
+                    _log_error(client.datapoints.post_multi_time_series_datapoints, current_time_series)
+                    current_time_series = []
 
-                name = str(col.rpartition(":")[2].strip())
-                external_id = str(col.rpartition(":")[0].strip())
+                name = col.rpartition(":")[2].strip()
+                external_id = col.rpartition(":")[0].strip()
 
                 if external_id in existing_time_series:
                     datapoints = create_datapoints(df[col], timestamps)
@@ -128,7 +128,7 @@ def post_datapoints(client, paths, existing_time_series, failed_path):
                         description="Auto-generated time series attached to Placeholder asset, external ID not found",
                         metadata={"externalID": external_id},
                     )
-                    post_request(client.time_series.post_time_series, [new_time_series])
+                    _log_error(client.time_series.post_time_series, [new_time_series])
                     existing_time_series[external_id] = name
 
                     datapoints = create_datapoints(df[col], timestamps)
@@ -138,18 +138,19 @@ def post_datapoints(client, paths, existing_time_series, failed_path):
                         count_of_datapoints += len(datapoints)
 
             if current_time_series:
-                post_datapoints_request()
+                _log_error(client.datapoints.post_multi_time_series_datapoints, current_time_series)
 
             logger.info("Processed {} datapoints from {}".format(count_of_datapoints, path))
 
     for path in paths:
         try:
             try:
-                process_data(path)
+                process_data(path, time_series_cache)
             except Exception as exc:
                 logger.error("Parsing of file {} failed: {!s}".format(path, exc))
-                failed_path.mkdir(parents=True, exist_ok=True)
-                path.replace(failed_path.joinpath(path.name))
+                if failed_path is not None:
+                    failed_path.mkdir(parents=True, exist_ok=True)
+                    path.replace(failed_path.joinpath(path.name))
             else:
                 path.unlink()
         except IOError as exc:
@@ -163,8 +164,11 @@ def find_new_files(last_mtime, base_path):
     return [p for p, mtime in all_paths if last_mtime < mtime < t_minus_2]
 
 
-def extract_datapoints(client, existing_time_series, process_live_data: bool, folder_path, failed_path):
+def extract_data_points(client, process_live_data: bool, folder_path, failed_path):
     try:
+        res = client.time_series.get_time_series(include_metadata=True, autopaging=True)
+        existing_time_series = {i["metadata"]["externalID"]: i["name"] for i in res.to_json()}
+
         if process_live_data:
             last_timestamp = LAST_PROCESSED_TIMESTAMP
             while True:
@@ -187,11 +191,17 @@ def extract_datapoints(client, existing_time_series, process_live_data: bool, fo
 
 def main(args):
     _configure_logger(args.log, args.live)
-    api_key = args.apikey if args.apikey else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
-    args.apikey = ""  # Don't log the api key if given through CLI
+
+    api_key = args.api_key if args.api_key else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
+    args.api_key = ""  # Don't log the api key if given through CLI
     logger.info("Extractor configured with {}".format(args))
 
-    # Establish API connection and get initial dictionary of existing time series
+    input_path = Path(args.input)
+    if not input_path.exists():
+        logger.fatal("Input folder does not exists: {!s}".format(input_path))
+        sys.exit(2)
+    failed_path = input_path.joinpath("failed") if args.move_failed else None
+
     try:
         client = CogniteClient(api_key=api_key)
         client.login.status()
@@ -199,12 +209,7 @@ def main(args):
         logger.error("Failed to create CDP client: {!s}".format(exc))
         client = CogniteClient(api_key=api_key)
 
-    existing_time_series = {
-        i["metadata"]["externalID"]: i["name"]
-        for i in client.time_series.get_time_series(include_metadata=True, autopaging=True).to_json()
-    }
-
-    extract_datapoints(client, existing_time_series, args.live, Path(args.input), Path(args.failed))
+    extract_data_points(client, args.live, input_path, failed_path)
 
 
 if __name__ == "__main__":
