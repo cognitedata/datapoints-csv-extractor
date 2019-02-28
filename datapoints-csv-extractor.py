@@ -125,7 +125,7 @@ def post_datapoints(client, paths, existing_time_series, failed_path):
                 else:
                     new_time_series = TimeSeries(
                         name=name,
-                        description="Auto-generated time series attached to Placeholder asset, external ID not found",
+                        description="Auto-generated time series, external ID not found",
                         metadata={"externalID": external_id},
                     )
                     post_request(client.time_series.post_time_series, [new_time_series])
