@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 BATCH_MAX = 1000  # Maximum number of time series batched at once
 
 
-def _parse_cli_args():
+def _parse_cli_args() -> None:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group()
@@ -50,7 +50,7 @@ def _parse_cli_args():
     return parser.parse_args()
 
 
-def _configure_logger(folder_path, live_processing: bool):
+def _configure_logger(folder_path, live_processing: bool) -> None:
     """Create 'folder_path' and configure logging to file as well as console."""
     folder_path.mkdir(parents=True, exist_ok=True)
     log_file = folder_path.joinpath("extractor-{}.log".format("live" if live_processing else "historical"))
@@ -67,7 +67,7 @@ def _configure_logger(folder_path, live_processing: bool):
 def _log_error(func, *args, **vargs):
     """Call 'func' with args, then log if an exception was raised."""
     try:
-        func(*args, **vargs)
+        return func(*args, **vargs)
     except Exception as error:
         logger.info(error)
 
@@ -88,21 +88,13 @@ def create_data_points(values, timestamps):
     return data_points
 
 
-def process_csv_file(client, csv_path, existing_time_series):
+def process_csv_file(client, csv_path, existing_time_series) -> None:
     """Find datapoints inside a single csv file and send it to CDP."""
-    df = None
-    try:
-        df = pandas.read_csv(csv_path, encoding="latin-1", delimiter=";", quotechar='"', skiprows=[1], index_col=0)
-    except IOError as file_error:
-        logger.warning(file_error)
-    except ValueError as format_error:
-        logger.warning(format_error)
-    if not df:
-        return
-
-    timestamps = [int(o) * 1000 for o in df.index.tolist()]
     count_of_data_points = 0
     current_time_series = []  # List of time series being processed
+
+    df = pandas.read_csv(csv_path, encoding="latin-1", delimiter=";", quotechar='"', skiprows=[1], index_col=0)
+    timestamps = [int(o) * 1000 for o in df.index.tolist()]
 
     for col in df:
         if len(current_time_series) >= BATCH_MAX:
@@ -134,7 +126,7 @@ def process_csv_file(client, csv_path, existing_time_series):
     logger.info("Processed {} datapoints from {}".format(count_of_data_points, csv_path))
 
 
-def process_files(client, paths, time_series_cache, failed_path):
+def process_files(client, paths, time_series_cache, failed_path) -> None:
     """Process one csv file at a time, and either delete it or possibly move it when done."""
     for path in paths:
         try:
