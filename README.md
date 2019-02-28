@@ -4,7 +4,7 @@ An extractor utilized to extract datapoints stored in CSV format
 ## Overview of extractor
 - The extractor is composed of a Python script (Python v3.7.2) that extracts datapoints stored in CSV format (the specific format of the file is discussed below), formats them, and pushes them to the CDP
 - This script can be run for either `live` or `historical` CSVs in a given folder
-    - Live: The script will process the 20 most recent files in the folder, and then proceed to check for any new files added to the folder every 5 seconds indefinitely
+    - Live: The script will process the 20 most recent files in the folder, and then proceed to check for any new files added to the folder every 3 seconds indefinitely
     - Historical: The script will process data from all files in the folder, oldest first, and then stop
 - The script removes the files from the source after successfully processing the data
 
