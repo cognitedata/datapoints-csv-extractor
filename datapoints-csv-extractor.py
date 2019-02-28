@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+# coding: utf-8
+"""
+A script that process csv files in a specified folder,
+to extract data points to send to CDP.
+"""
 import argparse
 import logging
 import os
@@ -14,8 +20,7 @@ from cognite.client.stable.time_series import TimeSeries
 
 logger = logging.getLogger(__name__)
 
-# Maximum number of time series batched at once
-BATCH_MAX = 1000
+BATCH_MAX = 1000  # Maximum number of time series batched at once
 
 
 def _parse_cli_args():
