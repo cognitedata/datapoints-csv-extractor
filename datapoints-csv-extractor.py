@@ -67,7 +67,7 @@ def _log_error(endpoint, parameter):
         logger.info(error)
 
 
-def post_datapoints(client, paths, time_series_cache, failed_path):
+def process_files(client, paths, time_series_cache, failed_path):
     def convert_float(value_string):
         try:
             value_float = float(value_string.replace(",", "."))
@@ -175,13 +175,13 @@ def extract_data_points(client, process_live_data: bool, folder_path, failed_pat
                 paths = find_new_files(last_timestamp, folder_path)
                 if paths:
                     last_timestamp = max(path.stat().st_mtime for path in paths)  # Timestamp of most recent modified
-                    post_datapoints(client, paths, existing_time_series, failed_path)
+                    process_files(client, paths[:20], existing_time_series, failed_path)  # Only 20 most recent
                 time.sleep(5)
 
         else:
             paths = find_new_files(0, folder_path)  # All paths in folder, regardless of timestamp
             if paths:
-                post_datapoints(client, paths, existing_time_series, failed_path)
+                process_files(client, paths, existing_time_series, failed_path)
             else:
                 logger.info("Found no files to process in {}".format(folder_path))
         logger.info("Extraction complete")
