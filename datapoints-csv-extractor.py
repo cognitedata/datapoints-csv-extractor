@@ -157,9 +157,9 @@ def process_files(client, paths, time_series_cache, failed_path):
             logger.error("Failed to delete/move file {}: {!s}".format(path, exc))
 
 
-def find_new_files(last_mtime, base_path):
+def find_new_files(last_mtime, base_path, newest_first=True):
     all_paths = [(p, p.stat().st_mtime) for p in base_path.glob("*.csv")]
-    all_paths.sort(key=itemgetter(1), reverse=True)  # Process newest file first
+    all_paths.sort(key=itemgetter(1), reverse=newest_first)  # Process newest file first
     t_minus_2 = int(time.time() - 2)  # Process files more than 2 seconds old
     return [p for p, mtime in all_paths if last_mtime < mtime < t_minus_2]
 
@@ -193,7 +193,7 @@ def extract_data_points(client, time_series_cache, process_live_data: bool, fold
                 time.sleep(5)
 
         else:
-            paths = find_new_files(0, folder_path)  # All paths in folder, regardless of timestamp
+            paths = find_new_files(0, folder_path, newest_first=False)  # All paths in folder, regardless of timestamp
             if paths:
                 process_files(client, paths, time_series_cache, failed_path)
             else:
