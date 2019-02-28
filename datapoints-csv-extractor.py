@@ -164,24 +164,38 @@ def find_new_files(last_mtime, base_path):
     return [p for p, mtime in all_paths if last_mtime < mtime < t_minus_2]
 
 
-def extract_data_points(client, process_live_data: bool, folder_path, failed_path):
-    try:
-        res = client.time_series.get_time_series(include_metadata=True, autopaging=True)
-        existing_time_series = {i["metadata"]["externalID"]: i["name"] for i in res.to_json()}
+def get_all_time_series(client):
+    """Get map of timeseries externalId to name of all timeseries that has externalId."""
+    for i in range(10):
+        try:
+            res = client.time_series.get_time_series(include_metadata=True, autopaging=True)
+        except APIError as exc:
+            logger.error("Failed to get timeseries: {!s}".format(exc))
+            time.sleep(i)
+        else:
+            break
+    else:
+        logger.fatal("Could not fetch time series data from CDP, exiting!")
+        sys.exit(1)
 
+    return {i["metadata"]["externalID"]: i["name"] for i in res.to_json() if "externalID" in i["metadata"]}
+
+
+def extract_data_points(client, time_series_cache, process_live_data: bool, folder_path, failed_path):
+    try:
         if process_live_data:
             last_timestamp = LAST_PROCESSED_TIMESTAMP
             while True:
                 paths = find_new_files(last_timestamp, folder_path)
                 if paths:
                     last_timestamp = max(path.stat().st_mtime for path in paths)  # Timestamp of most recent modified
-                    process_files(client, paths[:20], existing_time_series, failed_path)  # Only 20 most recent
+                    process_files(client, paths[:20], time_series_cache, failed_path)  # Only 20 most recent
                 time.sleep(5)
 
         else:
             paths = find_new_files(0, folder_path)  # All paths in folder, regardless of timestamp
             if paths:
-                process_files(client, paths, existing_time_series, failed_path)
+                process_files(client, paths, time_series_cache, failed_path)
             else:
                 logger.info("Found no files to process in {}".format(folder_path))
         logger.info("Extraction complete")
@@ -209,7 +223,7 @@ def main(args):
         logger.error("Failed to create CDP client: {!s}".format(exc))
         client = CogniteClient(api_key=api_key)
 
-    extract_data_points(client, args.live, input_path, failed_path)
+    extract_data_points(client, get_all_time_series(client), args.live, input_path, failed_path)
 
 
 if __name__ == "__main__":
