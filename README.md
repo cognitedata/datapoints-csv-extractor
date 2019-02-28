@@ -35,9 +35,9 @@ On a Windows device:
 ```
 <PYTHON PATH>\python.exe datapoints-csv-extractor.py --input <INPUT_FOLDER>
 ```
-Where <PYTHON PATH> is the path to the Python interpreter on the device. 
+- Where <PYTHON PATH> is the path to the Python interpreter on the device. 
 
-*Optional arguments*
+**Optional arguments**
 
 | Long Tag | Short Tag | Required | Parameter Required | Description |
 | ----------- | -----------| -----------| ----------- | ----------- |
