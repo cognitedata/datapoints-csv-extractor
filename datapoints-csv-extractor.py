@@ -125,7 +125,7 @@ def process_files(client, paths, time_series_cache, failed_path):
                 else:
                     new_time_series = TimeSeries(
                         name=name,
-                        description="Auto-generated time series attached to Placeholder asset, external ID not found",
+                        description="Auto-generated time series, external ID not found",
                         metadata={"externalID": external_id},
                     )
                     _log_error(client.time_series.post_time_series, [new_time_series])
