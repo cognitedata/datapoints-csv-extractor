@@ -4,11 +4,12 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
-iSort = "*"
+isort = "*"
 
 [packages]
 cognite-sdk = "==0.12.12"
 pandas = "*"
+cognite-prometheus = "==0.1.6"
 
 [requires]
 python_version = "3.7"
