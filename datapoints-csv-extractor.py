@@ -155,9 +155,9 @@ def find_files_in_path(folder_path, after_timestamp: int, limit: int = None, new
             logger.error("Failed to find stats on file {!s}: {!s}".format(path, exc))
             continue
         if after_timestamp < modified_timestamp < before_timestamp:
-            all_relevant_paths.append((path, modified_timestamp))
+            all_relevant_paths.append(path)
 
-    paths = sorted(all_relevant_paths, key=itemgetter(1), reverse=newest_first)
+    paths = sorted(all_relevant_paths, reverse=newest_first)
     return paths if not limit else paths[:limit]
 
 
