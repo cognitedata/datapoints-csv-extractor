@@ -17,6 +17,7 @@ import pandas
 from cognite import APIError, CogniteClient
 from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
 from cognite.client.stable.time_series import TimeSeries
+from cognite_prometheus.cognite_prometheus import CognitePrometheus
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,32 @@ def _configure_logger(folder_path, live_processing: bool) -> None:
     )
 
 
+def _configure_prometheus() -> None:
+    """Configure prometheus and create gauges"""
+
+    prometheus_jobname = os.environ.get("COGNITE_PROMETHEUS_JOBNAME")
+    prometheus_username = os.environ.get("COGNITE_PROMETHEUS_USERNAME")
+    prometheus_password = os.environ.get("COGNITE_PROMETHEUS_PASSWORD")
+    if prometheus_jobname and prometheus_username and prometheus_password:
+        prometheus = CognitePrometheus(prometheus_jobname, prometheus_username, prometheus_password)
+
+        data_points_gauge = prometheus.get_gauge(
+            "number_data_points_posted",
+            "Number of datapoints posted per file processed"
+        )
+
+        # NOTE: may not be the best way to organize - perhaps a separate class may be ideal
+        prometheus_dictionary = {
+            "CognitePrometheus": prometheus,
+            "CognitePrometheusGauges": {"data_points_gauge": data_points_gauge}
+        }
+
+        return prometheus_dictionary
+    else:
+        logger.info("Please provide Prometheus credentials for logging (jobname, username, and password)")
+        sys.exit(2)
+
+
 def _log_error(func, *args, **vargs):
     """Call 'func' with args, then log if an exception was raised."""
     try:
@@ -88,7 +115,7 @@ def create_data_points(values, timestamps):
     return data_points
 
 
-def process_csv_file(client, csv_path, existing_time_series) -> None:
+def process_csv_file(client, prometheus, csv_path, existing_time_series) -> None:
     """Find datapoints inside a single csv file and send it to CDP."""
     count_of_data_points = 0
     current_time_series = []  # List of time series being processed
@@ -125,13 +152,16 @@ def process_csv_file(client, csv_path, existing_time_series) -> None:
 
     logger.info("Processed {} datapoints from {}".format(count_of_data_points, csv_path))
 
+    prometheus["CognitePrometheusGauges"]["data_points_gauge"].set(count_of_data_points)
+    prometheus["CognitePrometheus"].push_to_server()
 
-def process_files(client, paths, time_series_cache, failed_path) -> None:
+
+def process_files(client, prometheus, paths, time_series_cache, failed_path) -> None:
     """Process one csv file at a time, and either delete it or possibly move it when done."""
     for path in paths:
         try:
             try:
-                process_csv_file(client, path, time_series_cache)
+                process_csv_file(client, prometheus, path, time_series_cache)
             except Exception as exc:
                 logger.error("Parsing of file {} failed: {!s}".format(path, exc))
                 if failed_path is not None:
@@ -178,20 +208,20 @@ def get_all_time_series(client):
     return {i["metadata"]["externalID"]: i["name"] for i in res.to_json() if "externalID" in i["metadata"]}
 
 
-def extract_data_points(client, time_series_cache, live_mode: bool, start_timestamp: int, folder_path, failed_path):
+def extract_data_points(client, prometheus, time_series_cache, live_mode: bool, start_timestamp: int, folder_path, failed_path):
     """Find datapoints in files in 'folder_path' and send them to CDP."""
     try:
         if live_mode:
             while True:
                 paths = find_files_in_path(folder_path, start_timestamp, limit=20)
                 if paths:
-                    process_files(client, paths, time_series_cache, failed_path)
+                    process_files(client, prometheus, paths, time_series_cache, failed_path)
                 time.sleep(3)
 
         else:
             paths = find_files_in_path(folder_path, start_timestamp, newest_first=False)
             if paths:
-                process_files(client, paths, time_series_cache, failed_path)
+                process_files(client, prometheus, paths, time_series_cache, failed_path)
             else:
                 logger.info("Found no files to process in {}".format(folder_path))
         logger.info("Extraction complete")
@@ -201,6 +231,7 @@ def extract_data_points(client, time_series_cache, live_mode: bool, start_timest
 
 def main(args):
     _configure_logger(Path(args.log), args.live)
+    prometheus = _configure_prometheus()
 
     api_key = args.api_key if args.api_key else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
     args.api_key = ""  # Don't log the api key if given through CLI
@@ -220,7 +251,7 @@ def main(args):
         logger.error("Failed to create CDP client: {!s}".format(exc))
         client = CogniteClient(api_key=api_key)
 
-    extract_data_points(client, get_all_time_series(client), args.live, start_timestamp, input_path, failed_path)
+    extract_data_points(client, prometheus, get_all_time_series(client), args.live, start_timestamp, input_path, failed_path)
 
 
 if __name__ == "__main__":
