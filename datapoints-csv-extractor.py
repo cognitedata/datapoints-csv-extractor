@@ -19,6 +19,8 @@ from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
 from cognite.client.stable.time_series import TimeSeries
 from cognite_prometheus.cognite_prometheus import CognitePrometheus
 
+from prometheus import Prometheus
+
 logger = logging.getLogger(__name__)
 
 BATCH_MAX = 1000  # Maximum number of time series batched at once
@@ -65,30 +67,25 @@ def _configure_logger(folder_path, live_processing: bool) -> None:
     )
 
 
-def _configure_prometheus() -> None:
-    """Configure prometheus and create gauges"""
-
+def _configure_prometheus():
+    """Configure prometheus object"""
     prometheus_jobname = os.environ.get("COGNITE_PROMETHEUS_JOBNAME")
     prometheus_username = os.environ.get("COGNITE_PROMETHEUS_USERNAME")
     prometheus_password = os.environ.get("COGNITE_PROMETHEUS_PASSWORD")
-    if prometheus_jobname and prometheus_username and prometheus_password:
-        prometheus = CognitePrometheus(prometheus_jobname, prometheus_username, prometheus_password)
 
-        data_points_gauge = prometheus.get_gauge(
-            "number_data_points_posted",
-            "Number of datapoints posted per file processed"
-        )
-
-        # NOTE: may not be the best way to organize - perhaps a separate class may be ideal
-        prometheus_dictionary = {
-            "CognitePrometheus": prometheus,
-            "CognitePrometheusGauges": {"data_points_gauge": data_points_gauge}
-        }
-
-        return prometheus_dictionary
-    else:
-        logger.info("Please provide Prometheus credentials for logging (jobname, username, and password)")
+    try:
+        CognitePrometheus(prometheus_jobname, prometheus_username, prometheus_password)
+    except Exception as exc:
+        logger.error("Failed to create Prometheus object: {!s}".format(exc))
         sys.exit(2)
+
+    prometheus_object: CognitePrometheus = CognitePrometheus.get_prometheus_object()
+
+    prometheus: Prometheus = Prometheus (
+        prometheus = prometheus_object
+    )
+
+    return prometheus
 
 
 def _log_error(func, *args, **vargs):
@@ -140,6 +137,9 @@ def process_csv_file(client, prometheus, csv_path, existing_time_series) -> None
             _log_error(client.time_series.post_time_series, [new_time_series])
             existing_time_series[external_id] = name
 
+            prometheus.created_time_series_gauge.inc()
+            prometheus.prometheus.push_to_server()
+
         data_points = create_data_points(df[col].tolist(), timestamps)
         if data_points:
             current_time_series.append(
@@ -152,8 +152,8 @@ def process_csv_file(client, prometheus, csv_path, existing_time_series) -> None
 
     logger.info("Processed {} datapoints from {}".format(count_of_data_points, csv_path))
 
-    prometheus["CognitePrometheusGauges"]["data_points_gauge"].set(count_of_data_points)
-    prometheus["CognitePrometheus"].push_to_server()
+    prometheus.data_points_gauge.set(count_of_data_points)
+    prometheus.prometheus.push_to_server()
 
 
 def process_files(client, prometheus, paths, time_series_cache, failed_path) -> None:
@@ -252,7 +252,6 @@ def main(args):
         client = CogniteClient(api_key=api_key)
 
     extract_data_points(client, prometheus, get_all_time_series(client), args.live, start_timestamp, input_path, failed_path)
-
 
 if __name__ == "__main__":
     main(_parse_cli_args())
