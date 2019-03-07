@@ -1,2 +1,1 @@
-numpy==1.15.4
 cognite-sdk==0.12.12
