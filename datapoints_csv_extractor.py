@@ -156,7 +156,6 @@ def process_csv_file(client, prometheus, csv_path, existing_time_series) -> None
 
     prometheus.all_data_points_gauge.labels(data_type=prometheus.data_type).inc(count_of_data_points)
     prometheus.prometheus.push_to_server()
-    sys.exit(2)
 
 
 def process_files(client, prometheus, paths, time_series_cache, failed_path) -> None:
