@@ -67,7 +67,7 @@ def _configure_logger(folder_path, live_processing: bool) -> None:
     )
 
 
-def _configure_prometheus():
+def _configure_prometheus(live: bool):
     """Configure prometheus object"""
     prometheus_jobname = os.environ.get("COGNITE_PROMETHEUS_JOBNAME")
     prometheus_username = os.environ.get("COGNITE_PROMETHEUS_USERNAME")
@@ -82,7 +82,8 @@ def _configure_prometheus():
     prometheus_object: CognitePrometheus = CognitePrometheus.get_prometheus_object()
 
     prometheus: Prometheus = Prometheus (
-        prometheus = prometheus_object
+        prometheus = prometheus_object,
+        live = live
     )
 
     return prometheus
@@ -137,7 +138,7 @@ def process_csv_file(client, prometheus, csv_path, existing_time_series) -> None
             _log_error(client.time_series.post_time_series, [new_time_series])
             existing_time_series[external_id] = name
 
-            prometheus.created_time_series_gauge.inc()
+            prometheus.time_series_gauge.labels(data_type=prometheus.data_type).inc()
             prometheus.prometheus.push_to_server()
 
         data_points = create_data_points(df[col].tolist(), timestamps)
@@ -146,14 +147,16 @@ def process_csv_file(client, prometheus, csv_path, existing_time_series) -> None
                 TimeseriesWithDatapoints(name=existing_time_series[external_id], datapoints=data_points)
             )
             count_of_data_points += len(data_points)
+            prometheus.time_series_data_points_gauge.labels(data_type=prometheus.data_type, external_id=external_id).inc(len(data_points))
 
     if current_time_series:
         _log_error(client.datapoints.post_multi_time_series_datapoints, current_time_series)
 
     logger.info("Processed {} datapoints from {}".format(count_of_data_points, csv_path))
 
-    prometheus.data_points_gauge.set(count_of_data_points)
+    prometheus.all_data_points_gauge.labels(data_type=prometheus.data_type).inc(count_of_data_points)
     prometheus.prometheus.push_to_server()
+    sys.exit(2)
 
 
 def process_files(client, prometheus, paths, time_series_cache, failed_path) -> None:
@@ -231,7 +234,7 @@ def extract_data_points(client, prometheus, time_series_cache, live_mode: bool, 
 
 def main(args):
     _configure_logger(Path(args.log), args.live)
-    prometheus = _configure_prometheus()
+    prometheus = _configure_prometheus(args.live)
 
     api_key = args.api_key if args.api_key else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
     args.api_key = ""  # Don't log the api key if given through CLI
