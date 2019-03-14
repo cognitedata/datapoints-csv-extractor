@@ -10,6 +10,8 @@ isort = "*"
 cognite-sdk = "==0.12.12"
 pandas = "*"
 cognite-prometheus = "==0.1.6"
+google-cloud-logging = "==1.10.0"
+cognite-logger = "==0.3.1"
 
 [requires]
 python_version = "3.7"

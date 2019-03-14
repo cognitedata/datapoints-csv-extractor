@@ -13,6 +13,7 @@ from logging.handlers import TimedRotatingFileHandler
 from operator import itemgetter
 from pathlib import Path
 
+import google.cloud.logging
 import pandas
 from cognite import APIError, CogniteClient
 from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
@@ -22,6 +23,8 @@ from cognite_prometheus.cognite_prometheus import CognitePrometheus
 from prometheus import Prometheus
 
 logger = logging.getLogger(__name__)
+client = google.cloud.logging.Client()
+client.setup_logging()
 
 BATCH_MAX = 1000  # Maximum number of time series batched at once
 

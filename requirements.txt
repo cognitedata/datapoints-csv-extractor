@@ -1,2 +1,4 @@
+cognite-logger==0.3.1
 cognite-prometheus==0.1.6
 cognite-sdk==0.12.12
+google-cloud-logging==1.10.0
