@@ -179,7 +179,7 @@ def process_files(client, prometheus, paths, time_series_cache, failed_path) -> 
 
 
 def find_files_in_path(folder_path, after_timestamp: int, limit: int = None, newest_first: bool = True):
-    """Return csv files in 'folder_path' sorted by 'newest_first'."""
+    """Return csv files in 'folder_path' sorted by 'newest_first' on last modified timestamp of files."""
     before_timestamp = int(time.time() - 2)  # Process files more than 2 seconds old
     all_relevant_paths = []
 
@@ -190,9 +190,9 @@ def find_files_in_path(folder_path, after_timestamp: int, limit: int = None, new
             logger.error("Failed to find stats on file {!s}: {!s}".format(path, exc))
             continue
         if after_timestamp < modified_timestamp < before_timestamp:
-            all_relevant_paths.append(path)
+            all_relevant_paths.append((path, modified_timestamp))
 
-    paths = sorted(all_relevant_paths, reverse=newest_first)
+    paths = [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=newest_first)]
     return paths if not limit else paths[:limit]
 
 

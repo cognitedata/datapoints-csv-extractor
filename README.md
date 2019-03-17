@@ -48,3 +48,14 @@ On a Windows device:
 | --move-failed | -m | FALSE | FALSE |  If this flag is used, the script will move CSV files failed to process into a subfolder called `failed/` |
 | --timestamp | -t | FALSE | TRUE |  Specify that only files newer than the unix timestamp should be processed |
 | --api-key | -k | FALSE | TRUE | If this flag is not use, the script will attempt to pull the API key from an environment variable called `COGNITE_EXTRACTOR_API_KEY`|
+
+## Contributing
+
+Feel free to open [issues](https://github.com/cognitedata/datapoints-csv-extractor/issues) / [pull requests](https://github.com/cognitedata/datapoints-csv-extractor/pulls) on [GitHub](https://github.com/cognitedata/datapoints-csv-extractor).
+
+## Versioning
+
+[Changelog](https://github.com/cognitedata/datapoints-csv-extractor/blob/master/CHANGELOG.md) can be found on GitHub.
+
+[SemVer](https://semver.org/). See [repository tags](https://github.com/cognitedata/datapoints-csv-extractor/tags).
+
