@@ -9,6 +9,6 @@ RUN pip install pipenv
 
 RUN pipenv install --system --deploy
 
-COPY datapoints-csv-extractor.py ./
+COPY csv-extractor/ ./
 
-CMD ["python", "datapoints-csv-extractor.py"]
+CMD ["python", "main.py"]
