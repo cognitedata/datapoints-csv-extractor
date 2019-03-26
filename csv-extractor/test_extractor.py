@@ -10,7 +10,7 @@ import pandas
 
 from csv_extractor import create_data_points, find_files_in_path
 
-TEST_FOLDER = Path(__file__).parent / "test_files"
+TEST_FOLDER = Path(__file__).parent.parent / "test_files"
 
 
 class ExtractorTestCase(unittest.TestCase):
