@@ -15,7 +15,7 @@ from pathlib import Path
 
 import google.cloud.logging
 import pandas
-from cognite import APIError, CogniteClient
+from cognite.client import APIError, CogniteClient
 from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
 from cognite.client.stable.time_series import TimeSeries
 from cognite_prometheus.cognite_prometheus import CognitePrometheus
@@ -23,13 +23,12 @@ from cognite_prometheus.cognite_prometheus import CognitePrometheus
 from prometheus import Prometheus
 
 logger = logging.getLogger(__name__)
-client = google.cloud.logging.Client()
-client.setup_logging()
+google.cloud.logging.Client().setup_logging()
 
 BATCH_MAX = 1000  # Maximum number of time series batched at once
 
 
-def _parse_cli_args() -> None:
+def _parse_cli_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group()
@@ -84,10 +83,7 @@ def _configure_prometheus(live: bool):
 
     prometheus_object: CognitePrometheus = CognitePrometheus.get_prometheus_object()
 
-    prometheus: Prometheus = Prometheus (
-        prometheus = prometheus_object,
-        live = live
-    )
+    prometheus: Prometheus = Prometheus(prometheus=prometheus_object, live=live)
 
     return prometheus
 
@@ -150,7 +146,9 @@ def process_csv_file(client, prometheus, csv_path, existing_time_series) -> None
                 TimeseriesWithDatapoints(name=existing_time_series[external_id], datapoints=data_points)
             )
             count_of_data_points += len(data_points)
-            prometheus.time_series_data_points_gauge.labels(data_type=prometheus.data_type, external_id=external_id).inc(len(data_points))
+            prometheus.time_series_data_points_gauge.labels(
+                data_type=prometheus.data_type, external_id=external_id
+            ).inc(len(data_points))
 
     if current_time_series:
         _log_error(client.datapoints.post_multi_time_series_datapoints, current_time_series)
@@ -213,7 +211,9 @@ def get_all_time_series(client):
     return {i["metadata"]["externalID"]: i["name"] for i in res.to_json() if "externalID" in i["metadata"]}
 
 
-def extract_data_points(client, prometheus, time_series_cache, live_mode: bool, start_timestamp: int, folder_path, failed_path):
+def extract_data_points(
+    client, prometheus, time_series_cache, live_mode: bool, start_timestamp: int, folder_path, failed_path
+):
     """Find datapoints in files in 'folder_path' and send them to CDP."""
     try:
         if live_mode:
@@ -256,7 +256,10 @@ def main(args):
         logger.error("Failed to create CDP client: {!s}".format(exc))
         client = CogniteClient(api_key=api_key)
 
-    extract_data_points(client, prometheus, get_all_time_series(client), args.live, start_timestamp, input_path, failed_path)
+    extract_data_points(
+        client, prometheus, get_all_time_series(client), args.live, start_timestamp, input_path, failed_path
+    )
+
 
 if __name__ == "__main__":
     main(_parse_cli_args())

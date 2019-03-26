@@ -3,15 +3,21 @@ name = "pypi"
 url = "https://pypi.org/simple"
 verify_ssl = true
 
-[dev-packages]
-isort = "*"
-
 [packages]
-cognite-sdk = "==0.12.12"
 pandas = "*"
+cognite-sdk = "==0.13.2"
+cognite-logger = "==0.4.*"
 cognite-prometheus = "==0.1.6"
 google-cloud-logging = "==1.10.0"
-cognite-logger = "==0.3.1"
+
+[dev-packages]
+isort = "*"
+black = "==19.3b0"
+pytest-cov = "*"
+pytest = "*"
 
 [requires]
 python_version = "3.7"
+
+[pipenv]
+allow_prereleases = true
