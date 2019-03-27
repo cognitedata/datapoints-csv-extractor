@@ -1,67 +1,21 @@
-#!/usr/bin/env python
 # coding: utf-8
 """
-A script that process csv files in a specified folder,
-to extract data points to send to CDP.
+A module for sending monitoring statistics to Prometheus.
 """
-import argparse
 import logging
-import os
 import sys
 import time
-from logging.handlers import TimedRotatingFileHandler
 from operator import itemgetter
-from pathlib import Path
 
 import pandas
-from cognite import APIError, CogniteClient
+from cognite.client import APIError
 from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
 from cognite.client.stable.time_series import TimeSeries
 
 logger = logging.getLogger(__name__)
 
+
 BATCH_MAX = 1000  # Maximum number of time series batched at once
-
-
-def _parse_cli_args() -> None:
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser()
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument(
-        "--live",
-        "-l",
-        action="store_true",
-        help="By default, historical data will be processed. Use '--live' to process live data",
-    )
-    group.add_argument(
-        "--historical", default=True, action="store_true", help="Process historical data instead of live"
-    )
-    parser.add_argument("--input", "-i", required=True, help="Folder path of the files to process")
-    parser.add_argument("--timestamp", "-t", required=False, type=int, help="Optional, process files older than this")
-    parser.add_argument("--log", "-d", required=False, default="log", help="Optional, log directory")
-    parser.add_argument(
-        "--move-failed",
-        "-m",
-        required=False,
-        action="store_true",
-        help="Optional, move failed csv files to subfolder failed",
-    )
-    parser.add_argument("--api-key", "-k", required=False, help="Optional, CDP API KEY")
-    return parser.parse_args()
-
-
-def _configure_logger(folder_path, live_processing: bool) -> None:
-    """Create 'folder_path' and configure logging to file as well as console."""
-    folder_path.mkdir(parents=True, exist_ok=True)
-    log_file = folder_path.joinpath("extractor-{}.log".format("live" if live_processing else "historical"))
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(name)s %(levelname)s - %(message)s",
-        handlers=[
-            TimedRotatingFileHandler(log_file, when="midnight", backupCount=7),
-            logging.StreamHandler(sys.stdout),
-        ],
-    )
 
 
 def _log_error(func, *args, **vargs):
@@ -78,17 +32,20 @@ def create_data_points(values, timestamps):
 
     for i, value_string in enumerate(values):
         if pandas.notnull(value_string):
-            try:
-                value = float(value_string.replace(",", "."))
-            except ValueError as error:
-                logger.info(error)
+            if not isinstance(value_string, str):
+                value = value_string
             else:
-                data_points.append(Datapoint(timestamp=timestamps[i], value=value))
+                try:
+                    value = float(value_string.replace(",", "."))
+                except ValueError as error:
+                    logger.info(error)
+                    continue
+            data_points.append(Datapoint(timestamp=timestamps[i], value=value))
 
     return data_points
 
 
-def process_csv_file(client, csv_path, existing_time_series) -> None:
+def process_csv_file(client, monitor, csv_path, existing_time_series) -> None:
     """Find datapoints inside a single csv file and send it to CDP."""
     count_of_data_points = 0
     current_time_series = []  # List of time series being processed
@@ -112,6 +69,7 @@ def process_csv_file(client, csv_path, existing_time_series) -> None:
             )
             _log_error(client.time_series.post_time_series, [new_time_series])
             existing_time_series[external_id] = name
+            monitor.incr_time_series_counter()
 
         data_points = create_data_points(df[col].tolist(), timestamps)
         if data_points:
@@ -119,21 +77,24 @@ def process_csv_file(client, csv_path, existing_time_series) -> None:
                 TimeseriesWithDatapoints(name=existing_time_series[external_id], datapoints=data_points)
             )
             count_of_data_points += len(data_points)
+            monitor.incr_data_points_counter(external_id, len(data_points))
 
     if current_time_series:
         _log_error(client.datapoints.post_multi_time_series_datapoints, current_time_series)
 
     logger.info("Processed {} datapoints from {}".format(count_of_data_points, csv_path))
+    monitor.incr_total_data_points_counter(count_of_data_points)
+    monitor.push()
 
 
-def process_files(client, paths, time_series_cache, failed_path) -> None:
+def process_files(client, monitor, paths, time_series_cache, failed_path) -> None:
     """Process one csv file at a time, and either delete it or possibly move it when done."""
     for path in paths:
         try:
             try:
-                process_csv_file(client, path, time_series_cache)
+                process_csv_file(client, monitor, path, time_series_cache)
             except Exception as exc:
-                logger.error("Parsing of file {} failed: {!s}".format(path, exc))
+                logger.error("Parsing of file {} failed: {!s}".format(path, exc), exc_info=exc)
                 if failed_path is not None:
                     failed_path.mkdir(parents=True, exist_ok=True)
                     path.replace(failed_path.joinpath(path.name))
@@ -175,53 +136,31 @@ def get_all_time_series(client):
         logger.fatal("Could not fetch time series data from CDP, exiting!")
         sys.exit(1)
 
-    return {i["metadata"]["externalID"]: i["name"] for i in res.to_json() if "externalID" in i["metadata"]}
+    return {
+        i["metadata"]["externalID"]: i["name"]
+        for i in res.to_json()
+        if "metadata" in i and "externalID" in i["metadata"]
+    }
 
 
-def extract_data_points(client, time_series_cache, live_mode: bool, start_timestamp: int, folder_path, failed_path):
+def extract_data_points(
+    client, monitor, time_series_cache, live_mode: bool, start_timestamp: int, folder_path, failed_path
+):
     """Find datapoints in files in 'folder_path' and send them to CDP."""
     try:
         if live_mode:
             while True:
                 paths = find_files_in_path(folder_path, start_timestamp, limit=20)
                 if paths:
-                    process_files(client, paths, time_series_cache, failed_path)
+                    process_files(client, monitor, paths, time_series_cache, failed_path)
                 time.sleep(3)
 
         else:
             paths = find_files_in_path(folder_path, start_timestamp, newest_first=False)
             if paths:
-                process_files(client, paths, time_series_cache, failed_path)
+                process_files(client, monitor, paths, time_series_cache, failed_path)
             else:
                 logger.info("Found no files to process in {}".format(folder_path))
         logger.info("Extraction complete")
     except KeyboardInterrupt:
         logger.warning("Extractor stopped")
-
-
-def main(args):
-    _configure_logger(Path(args.log), args.live)
-
-    api_key = args.api_key if args.api_key else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
-    args.api_key = ""  # Don't log the api key if given through CLI
-    logger.info("Extractor configured with {}".format(args))
-    start_timestamp = args.timestamp if args.timestamp else 0
-
-    input_path = Path(args.input)
-    if not input_path.exists():
-        logger.fatal("Input folder does not exists: {!s}".format(input_path))
-        sys.exit(2)
-    failed_path = input_path.joinpath("failed") if args.move_failed else None
-
-    try:
-        client = CogniteClient(api_key=api_key)
-        client.login.status()
-    except APIError as exc:
-        logger.error("Failed to create CDP client: {!s}".format(exc))
-        client = CogniteClient(api_key=api_key)
-
-    extract_data_points(client, get_all_time_series(client), args.live, start_timestamp, input_path, failed_path)
-
-
-if __name__ == "__main__":
-    main(_parse_cli_args())
