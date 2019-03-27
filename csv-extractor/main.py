@@ -49,8 +49,9 @@ def _parse_cli_args():
 
 def _configure_logger(folder_path, live_processing: bool) -> None:
     """Create 'folder_path' and configure logging to file as well as console."""
+    name_postfix = "live" if live_processing else "historical"
     folder_path.mkdir(parents=True, exist_ok=True)
-    log_file = folder_path.joinpath("extractor-{}.log".format("live" if live_processing else "historical"))
+    log_file = folder_path.joinpath("extractor-{}.log".format(name_postfix))
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s - %(message)s",
@@ -60,11 +61,12 @@ def _configure_logger(folder_path, live_processing: bool) -> None:
         ],
     )
 
+    if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):  # Temp hack
+        google.cloud.logging.Client().setup_logging(name="csv-extractor-{}".format(name_postfix))
+
 
 def main(args):
     _configure_logger(Path(args.log), args.live)
-    if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):  # Temp hack
-        google.cloud.logging.Client().setup_logging()
     monitor = configure_prometheus(args.live)
 
     api_key = args.api_key if args.api_key else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
