@@ -63,7 +63,7 @@ def _configure_logger(folder_path, live_processing: bool) -> None:
 
 def main(args):
     _configure_logger(Path(args.log), args.live)
-    google.cloud.logging.Client().setup_logging()
+    # google.cloud.logging.Client().setup_logging()
     monitor = configure_prometheus(args.live)
 
     api_key = args.api_key if args.api_key else os.environ.get("COGNITE_EXTRACTOR_API_KEY")

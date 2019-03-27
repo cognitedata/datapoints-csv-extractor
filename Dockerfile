@@ -11,4 +11,5 @@ RUN pipenv install --system --deploy
 
 COPY csv-extractor/ ./
 
-CMD ["python", "main.py"]
+ENTRYPOINT ["python", "main.py"]
+CMD []
