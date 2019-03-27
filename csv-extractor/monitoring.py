@@ -17,8 +17,14 @@ def configure_prometheus(live: bool):
     username = os.environ.get("COGNITE_PROMETHEUS_USERNAME")
     password = os.environ.get("COGNITE_PROMETHEUS_PASSWORD")
 
+    if not jobname or not username or not password:
+        logger.warning("Prometheus is not configured: {} {}".format(jobname, username))
+        unconfigured_dummy = True
+    else:
+        unconfigured_dummy = False
+
     try:
-        CognitePrometheus(jobname, username, password)
+        CognitePrometheus(jobname, username, password, unconfigured_dummy=unconfigured_dummy)
     except Exception as exc:
         logger.error("Failed to create Prometheus object: {!s}".format(exc))
     return Prometheus(CognitePrometheus.get_prometheus_object(), live)
