@@ -19,6 +19,7 @@ Changes are grouped as follows
 - CHANGELOG.md file
 - CONTRIBUTING.md file
 - Dockerfile for building a docker image
+- Use py.test for unittesting
 
 ### Changed
 - Updated README to include versioning information

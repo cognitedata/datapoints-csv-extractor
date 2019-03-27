@@ -1,6 +1,6 @@
 IMAGE=eu.gcr.io/cognite-registry/datapoints-csv-extractor:latest
 
-.PHONY: build run push  all clean
+.PHONY: build run push all clean tests
 
 
 all: clean build
@@ -13,6 +13,9 @@ run:
 
 push:
 	docker push ${IMAGE}
+
+tests:
+	pipenv run pytest --cov=csv-extractor
 
 dependencies:
 	pipenv install --dev
@@ -31,4 +34,3 @@ clean:
 	rm -rf build
 	rm -rf htmlcov
 	rm -rf dist
-
