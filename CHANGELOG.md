@@ -14,6 +14,9 @@ Changes are grouped as follows
 
 
 ## [Unreleased]
+- Nothing yet
+
+## [0.1.0] - 2019-04-01
 ### Added
 - LICENSE file
 - CHANGELOG.md file
@@ -23,8 +26,8 @@ Changes are grouped as follows
 
 ### Changed
 - Updated README to include versioning information
+- Logging of missing files as debug log instead of errors
 
 ## [0.0.0] - 2019-02-05
 ### Added
 - Initial commit
-
