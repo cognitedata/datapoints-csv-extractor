@@ -101,7 +101,7 @@ def process_files(client, monitor, paths, time_series_cache, failed_path) -> Non
             else:
                 path.unlink()
         except IOError as exc:
-            logger.error("Failed to delete/move file {}: {!s}".format(path, exc))
+            logger.warning("Failed to delete/move file {}: {!s}".format(path, exc))
 
 
 def find_files_in_path(folder_path, after_timestamp: int, limit: int = None, newest_first: bool = True):
@@ -112,8 +112,8 @@ def find_files_in_path(folder_path, after_timestamp: int, limit: int = None, new
     for path in folder_path.glob("*.csv"):
         try:
             modified_timestamp = path.stat().st_mtime
-        except IOError as exc:  # Possible that file no longer exists
-            logger.error("Failed to find stats on file {!s}: {!s}".format(path, exc))
+        except IOError as exc:  # Possible that file no longer exists, multiple extractors
+            logger.debug("Failed to find stats on file {!s}: {!s}".format(path, exc))
             continue
         if after_timestamp < modified_timestamp < before_timestamp:
             all_relevant_paths.append((path, modified_timestamp))
