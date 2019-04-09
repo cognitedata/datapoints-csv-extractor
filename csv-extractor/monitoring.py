@@ -12,7 +12,7 @@ from prometheus_client import Counter, Info, PlatformCollector, ProcessCollector
 logger = logging.getLogger(__name__)
 
 
-def configure_prometheus(live: bool):
+def configure_prometheus(live: bool, project_name):
     """Configure prometheus object, or return dummy object if not configured."""
     jobname = os.environ.get("COGNITE_PROMETHEUS_JOBNAME")
     username = os.environ.get("COGNITE_PROMETHEUS_USERNAME")
@@ -28,7 +28,7 @@ def configure_prometheus(live: bool):
         CognitePrometheus(jobname, username, password, unconfigured_dummy=unconfigured_dummy)
     except Exception as exc:
         logger.error("Failed to create Prometheus object: {!s}".format(exc))
-    return Prometheus(CognitePrometheus.get_prometheus_object(), live)
+    return Prometheus(CognitePrometheus.get_prometheus_object(), live, project_name)
 
 
 def _get_host_info():
@@ -36,7 +36,8 @@ def _get_host_info():
 
 
 class Prometheus:
-    def __init__(self, prometheus, live: bool):
+    def __init__(self, prometheus, live: bool, project_name):
+        self.project_name = project_name
         self.prometheus = prometheus
         self.data_type = "live" if live else "historical"
 
@@ -48,32 +49,32 @@ class Prometheus:
         self.time_series_counter = Counter(
             "created_time_series_total",
             "Number of time series created since the extractor started running",
-            labelnames=["data_type"],
+            labelnames=["data_type", "project_name"],
             registry=CognitePrometheus.registry,
         )
 
         self.all_data_points_counter = Counter(
             "posted_data_points_total",
             "Number of datapoints posted since the extractor started running",
-            labelnames=["data_type"],
+            labelnames=["data_type", "project_name"],
             registry=CognitePrometheus.registry,
         )
 
         self.time_series_data_points_counter = Counter(
             "posted_data_points_per_time_series_total",
             "Number of datapoints posted per time series (based on external ID) since the extractor started running",
-            labelnames=["data_type", "external_id"],
+            labelnames=["data_type", "external_id", "project_name"],
             registry=CognitePrometheus.registry,
         )
 
     def incr_time_series_counter(self, amount: int = 1) -> None:
-        self.time_series_counter.labels(data_type=self.data_type).inc(amount)
+        self.time_series_counter.labels(data_type=self.data_type, project_name=self.project_name).inc(amount)
 
     def incr_total_data_points_counter(self, amount: int) -> None:
-        self.all_data_points_counter.labels(data_type=self.data_type).inc(amount)
+        self.all_data_points_counter.labels(data_type=self.data_type, project_name=self.project_name).inc(amount)
 
     def incr_data_points_counter(self, external_id: str, amount: int) -> None:
-        self.time_series_data_points_counter.labels(data_type=self.data_type, external_id=external_id).inc(amount)
+        self.time_series_data_points_counter.labels(data_type=self.data_type, external_id=external_id, project_name=self.project_name).inc(amount)
 
     def push(self):
         try:

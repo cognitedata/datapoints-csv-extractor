@@ -67,7 +67,6 @@ def _configure_logger(folder_path, live_processing: bool) -> None:
 
 def main(args):
     _configure_logger(Path(args.log), args.live)
-    monitor = configure_prometheus(args.live)
 
     api_key = args.api_key if args.api_key else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
     args.api_key = ""  # Don't log the api key if given through CLI
@@ -86,6 +85,9 @@ def main(args):
     except APIError as exc:
         logger.error("Failed to create CDP client: {!s}".format(exc))
         client = CogniteClient(api_key=api_key)
+
+    project_name = client._project
+    monitor = configure_prometheus(args.live, project_name) 
 
     extract_data_points(
         client, monitor, get_all_time_series(client), args.live, start_timestamp, input_path, failed_path

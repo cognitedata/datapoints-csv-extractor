@@ -1,6 +1,6 @@
 # coding: utf-8
 """
-A module for sending monitoring statistics to Prometheus.
+A module for extracting datapoints from CSV files.
 """
 import logging
 import sys
