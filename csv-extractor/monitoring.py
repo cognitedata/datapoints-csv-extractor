@@ -31,82 +31,78 @@ def configure_prometheus(live: bool, project_name):
     return Prometheus(CognitePrometheus.get_prometheus_object(), live, project_name)
 
 
-def _get_host_info():
-    return {"hostname": socket.gethostname(), "fqdn": socket.getfqdn()}
-
-
 class Prometheus:
-    def __init__(self, prometheus, live: bool, project_name):
+    namespace = "csv_extractor"
+
+    def __init__(self, prometheus, live: bool, project_name: str):
         self.project_name = project_name
         self.prometheus = prometheus
         self.data_type = "live" if live else "historical"
 
-        self.info = Info("host_info", "Host info", registry=CognitePrometheus.registry)
-        self.info.info(_get_host_info())
-        self.process = ProcessCollector(registry=CognitePrometheus.registry)
+        self.info = Info("host_info", "Host info", namespace=self.namespace, registry=CognitePrometheus.registry)
+        self.info.info({"hostname": socket.gethostname(), "fqdn": socket.getfqdn()})
+        self.process = ProcessCollector(namespace=self.namespace, registry=CognitePrometheus.registry)
         self.platform = PlatformCollector(registry=CognitePrometheus.registry)
 
-        self.time_series_counter = Counter(
+        self.created_time_series_counter = Counter(
             "created_time_series_total",
             "Number of time series created since the extractor started running",
+            namespace=self.namespace,
             labelnames=["data_type", "project_name"],
+            labelvalues=(self.data_type, self.project_name),
             registry=CognitePrometheus.registry,
         )
 
         self.all_data_points_counter = Counter(
             "posted_data_points_total",
             "Number of datapoints posted since the extractor started running",
+            namespace=self.namespace,
             labelnames=["data_type", "project_name"],
+            labelvalues=(self.data_type, self.project_name),
             registry=CognitePrometheus.registry,
         )
 
-        self.time_series_data_points_counter = Counter(
-            "posted_data_points_per_time_series_total",
-            "Number of datapoints posted per time series (based on external ID) since the extractor started running",
-            labelnames=["data_type", "external_id", "project_name"],
-            registry=CognitePrometheus.registry,
-        )
-
-        self.csv_files_gauge = Gauge(
-            "relevant_csv_files_total",
-            "Number of csv files in the folder that should be processed by the extractor",
+        self.count_of_time_series_gauge = Gauge(
+            "posted_time_series_count",
+            "The number of timeseries that had valid datapoints in the current file",
+            namespace=self.namespace,
             labelnames=["data_type", "project_name"],
+            labelvalues=(self.data_type, self.project_name),
             registry=CognitePrometheus.registry,
         )
 
-        self.remaining_files_to_process = Gauge(
+        self.available_csv_files_gauge = Gauge(
+            "available_csv_files",
+            "Number of csv files in the folder that could be processed by the extractor",
+            namespace=self.namespace,
+            labelnames=["data_type", "project_name"],
+            labelvalues=(self.data_type, self.project_name),
+            registry=CognitePrometheus.registry,
+        )
+
+        self.unprocessed_files_gauge = Gauge(
             "unprocessed_files",
             "Number of csv files that remains to be processed in this batch",
+            namespace=self.namespace,
             labelnames=["data_type", "project_name"],
+            labelvalues=(self.data_type, self.project_name),
             registry=CognitePrometheus.registry,
         )
 
-        self.processed_files_gauge = Gauge(
+        self.successfully_processed_files_gauge = Gauge(
             "successfully_processed_files",
             "Number of csv files that has been successfully processed in this batch",
+            namespace=self.namespace,
             labelnames=["data_type", "project_name"],
+            labelvalues=(self.data_type, self.project_name),
             registry=CognitePrometheus.registry,
         )
 
-    def incr_time_series_counter(self, amount: int = 1) -> None:
-        self.time_series_counter.labels(data_type=self.data_type, project_name=self.project_name).inc(amount)
+    def incr_created_time_series_counter(self, amount: int = 1) -> None:
+        self.created_time_series_counter.inc(amount)
 
     def incr_total_data_points_counter(self, amount: int) -> None:
-        self.all_data_points_counter.labels(data_type=self.data_type, project_name=self.project_name).inc(amount)
-
-    def incr_data_points_counter(self, external_id: str, amount: int) -> None:
-        self.time_series_data_points_counter.labels(
-            data_type=self.data_type, external_id=external_id, project_name=self.project_name
-        ).inc(amount)
-
-    def set_relevant_files_count(self, amount: int) -> None:
-        self.csv_files_gauge.labels(data_type=self.data_type, project_name=self.project_name).set(amount)
-
-    def set_processed_files_count(self, amount: int) -> None:
-        self.processed_files_gauge.labels(data_type=self.data_type, project_name=self.project_name).set(amount)
-
-    def set_unprocessed_files_count(self, amount: int) -> None:
-        self.remaining_files_to_process.labels(data_type=self.data_type, project_name=self.project_name).set(amount)
+        self.all_data_points_counter.inc(amount)
 
     def push(self):
         try:

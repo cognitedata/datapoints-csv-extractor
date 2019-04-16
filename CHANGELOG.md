@@ -14,7 +14,12 @@ Changes are grouped as follows
 
 
 ## [Unreleased]
-- Nothing yet
+### Added
+- New metrics for files
+- Cognite Fusion project name to metrics labels
+
+### Changed
+- Replaced metrics for datapoints per timeseries with count of timeseries
 
 ## [0.1.0] - 2019-04-01
 ### Added

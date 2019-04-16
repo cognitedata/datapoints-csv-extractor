@@ -45,9 +45,18 @@ def create_data_points(values, timestamps):
     return data_points
 
 
+def create_time_series(client, name: str, external_id: str) -> None:
+    """Create a new time series when the 'external_id' isn't found."""
+    new_time_series = TimeSeries(
+        name=name, description="Auto-generated time series, external ID not found", metadata={"externalID": external_id}
+    )
+    _log_error(client.time_series.post_time_series, [new_time_series])
+
+
 def process_csv_file(client, monitor, csv_path, existing_time_series) -> None:
     """Find datapoints inside a single csv file and send it to CDP."""
     count_of_data_points = 0
+    unique_external_ids = set()  # Count number of time series processed
     current_time_series = []  # List of time series being processed
 
     df = pandas.read_csv(csv_path, encoding="latin-1", delimiter=";", quotechar='"', skiprows=[1], index_col=0)
@@ -62,14 +71,9 @@ def process_csv_file(client, monitor, csv_path, existing_time_series) -> None:
         external_id = col.rpartition(":")[0].strip()
 
         if external_id not in existing_time_series:
-            new_time_series = TimeSeries(
-                name=name,
-                description="Auto-generated time series, external ID not found",
-                metadata={"externalID": external_id},
-            )
-            _log_error(client.time_series.post_time_series, [new_time_series])
+            create_time_series(client, name, external_id)
             existing_time_series[external_id] = name
-            monitor.incr_time_series_counter()
+            monitor.incr_created_time_series_counter()
 
         data_points = create_data_points(df[col].tolist(), timestamps)
         if data_points:
@@ -77,19 +81,21 @@ def process_csv_file(client, monitor, csv_path, existing_time_series) -> None:
                 TimeseriesWithDatapoints(name=existing_time_series[external_id], datapoints=data_points)
             )
             count_of_data_points += len(data_points)
-            monitor.incr_data_points_counter(external_id, len(data_points))
+            unique_external_ids.add(external_id)
 
     if current_time_series:
         _log_error(client.datapoints.post_multi_time_series_datapoints, current_time_series)
 
     logger.info("Processed {} datapoints from {}".format(count_of_data_points, csv_path))
     monitor.incr_total_data_points_counter(count_of_data_points)
+    monitor.count_of_time_series_gauge.set(len(unique_external_ids))
 
 
 def process_files(client, monitor, paths, time_series_cache, failed_path) -> None:
     """Process one csv file at a time, and either delete it or possibly move it when done."""
     processed_files_count = 0
     remaining_files_count = len(paths)
+
     for path in paths:
         try:
             try:
@@ -106,8 +112,8 @@ def process_files(client, monitor, paths, time_series_cache, failed_path) -> Non
             logger.warning("Failed to delete/move file {}: {!s}".format(path, exc))
 
         remaining_files_count -= 1
-        monitor.set_unprocessed_files_count(remaining_files_count)
-        monitor.set_processed_files_count(processed_files_count)
+        monitor.unprocessed_files_gauge.set(remaining_files_count)
+        monitor.successfully_processed_files_gauge.set(processed_files_count)
         monitor.push()
 
 
@@ -126,7 +132,7 @@ def find_files_in_path(monitor, folder_path, after_timestamp: int, limit: int = 
             all_relevant_paths.append((path, modified_timestamp))
 
     logger.info("Found {} relevant files to process in {}".format(len(all_relevant_paths), folder_path))
-    monitor.set_relevant_files_count(len(all_relevant_paths))
+    monitor.available_csv_files_gauge.set(len(all_relevant_paths))
     monitor.push()
 
     paths = [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=newest_first)]
