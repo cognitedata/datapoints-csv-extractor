@@ -7,7 +7,7 @@ import os
 import socket
 
 from cognite_prometheus.cognite_prometheus import CognitePrometheus
-from prometheus_client import Counter, Info, PlatformCollector, ProcessCollector
+from prometheus_client import Counter, Gauge, Info, PlatformCollector, ProcessCollector
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,27 @@ class Prometheus:
             registry=CognitePrometheus.registry,
         )
 
+        self.csv_files_gauge = Gauge(
+            "relevant_csv_files_total",
+            "Number of csv files in the folder that should be processed by the extractor",
+            labelnames=["data_type", "project_name"],
+            registry=CognitePrometheus.registry,
+        )
+
+        self.remaining_files_to_process = Gauge(
+            "unprocessed_files",
+            "Number of csv files that remains to be processed in this batch",
+            labelnames=["data_type", "project_name"],
+            registry=CognitePrometheus.registry,
+        )
+
+        self.processed_files_gauge = Gauge(
+            "successfully_processed_files",
+            "Number of csv files that has been successfully processed in this batch",
+            labelnames=["data_type", "project_name"],
+            registry=CognitePrometheus.registry,
+        )
+
     def incr_time_series_counter(self, amount: int = 1) -> None:
         self.time_series_counter.labels(data_type=self.data_type, project_name=self.project_name).inc(amount)
 
@@ -74,7 +95,18 @@ class Prometheus:
         self.all_data_points_counter.labels(data_type=self.data_type, project_name=self.project_name).inc(amount)
 
     def incr_data_points_counter(self, external_id: str, amount: int) -> None:
-        self.time_series_data_points_counter.labels(data_type=self.data_type, external_id=external_id, project_name=self.project_name).inc(amount)
+        self.time_series_data_points_counter.labels(
+            data_type=self.data_type, external_id=external_id, project_name=self.project_name
+        ).inc(amount)
+
+    def set_relevant_files_count(self, amount: int) -> None:
+        self.csv_files_gauge.labels(data_type=self.data_type, project_name=self.project_name).set(amount)
+
+    def set_processed_files_count(self, amount: int) -> None:
+        self.processed_files_gauge.labels(data_type=self.data_type, project_name=self.project_name).set(amount)
+
+    def set_unprocessed_files_count(self, amount: int) -> None:
+        self.remaining_files_to_process.labels(data_type=self.data_type, project_name=self.project_name).set(amount)
 
     def push(self):
         try:

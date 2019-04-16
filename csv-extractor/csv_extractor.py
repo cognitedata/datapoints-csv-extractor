@@ -84,11 +84,12 @@ def process_csv_file(client, monitor, csv_path, existing_time_series) -> None:
 
     logger.info("Processed {} datapoints from {}".format(count_of_data_points, csv_path))
     monitor.incr_total_data_points_counter(count_of_data_points)
-    monitor.push()
 
 
 def process_files(client, monitor, paths, time_series_cache, failed_path) -> None:
     """Process one csv file at a time, and either delete it or possibly move it when done."""
+    processed_files_count = 0
+    remaining_files_count = len(paths)
     for path in paths:
         try:
             try:
@@ -100,11 +101,17 @@ def process_files(client, monitor, paths, time_series_cache, failed_path) -> Non
                     path.replace(failed_path.joinpath(path.name))
             else:
                 path.unlink()
+                processed_files_count += 1
         except IOError as exc:
             logger.warning("Failed to delete/move file {}: {!s}".format(path, exc))
 
+        remaining_files_count -= 1
+        monitor.set_unprocessed_files_count(remaining_files_count)
+        monitor.set_processed_files_count(processed_files_count)
+        monitor.push()
 
-def find_files_in_path(folder_path, after_timestamp: int, limit: int = None, newest_first: bool = True):
+
+def find_files_in_path(monitor, folder_path, after_timestamp: int, limit: int = None, newest_first: bool = True):
     """Return csv files in 'folder_path' sorted by 'newest_first' on last modified timestamp of files."""
     before_timestamp = int(time.time() - 2)  # Process files more than 2 seconds old
     all_relevant_paths = []
@@ -117,6 +124,10 @@ def find_files_in_path(folder_path, after_timestamp: int, limit: int = None, new
             continue
         if after_timestamp < modified_timestamp < before_timestamp:
             all_relevant_paths.append((path, modified_timestamp))
+
+    logger.info("Found {} relevant files to process in {}".format(len(all_relevant_paths), folder_path))
+    monitor.set_relevant_files_count(len(all_relevant_paths))
+    monitor.push()
 
     paths = [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=newest_first)]
     return paths if not limit else paths[:limit]
@@ -150,17 +161,15 @@ def extract_data_points(
     try:
         if live_mode:
             while True:
-                paths = find_files_in_path(folder_path, start_timestamp, limit=20)
+                paths = find_files_in_path(monitor, folder_path, start_timestamp, limit=20)
                 if paths:
                     process_files(client, monitor, paths, time_series_cache, failed_path)
-                time.sleep(3)
+                time.sleep(2)
 
         else:
-            paths = find_files_in_path(folder_path, start_timestamp, newest_first=False)
+            paths = find_files_in_path(monitor, folder_path, start_timestamp, newest_first=False)
             if paths:
                 process_files(client, monitor, paths, time_series_cache, failed_path)
-            else:
-                logger.info("Found no files to process in {}".format(folder_path))
         logger.info("Extraction complete")
     except KeyboardInterrupt:
         logger.warning("Extractor stopped")
