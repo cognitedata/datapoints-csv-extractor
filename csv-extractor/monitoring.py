@@ -7,7 +7,7 @@ import os
 import socket
 
 from cognite_prometheus.cognite_prometheus import CognitePrometheus
-from prometheus_client import Counter, Info, PlatformCollector, ProcessCollector
+from prometheus_client import Counter, Gauge, Info, PlatformCollector, ProcessCollector
 
 logger = logging.getLogger(__name__)
 
@@ -31,50 +31,74 @@ def configure_prometheus(live: bool, project_name):
     return Prometheus(CognitePrometheus.get_prometheus_object(), live, project_name)
 
 
-def _get_host_info():
-    return {"hostname": socket.gethostname(), "fqdn": socket.getfqdn()}
-
-
 class Prometheus:
-    def __init__(self, prometheus, live: bool, project_name):
+    namespace = "csv_extractor"
+    labels = ["data_type", "project_name"]
+
+    def __init__(self, prometheus, live: bool, project_name: str):
         self.project_name = project_name
         self.prometheus = prometheus
         self.data_type = "live" if live else "historical"
+        self.label_values = (self.data_type, self.project_name)
 
-        self.info = Info("host_info", "Host info", registry=CognitePrometheus.registry)
-        self.info.info(_get_host_info())
-        self.process = ProcessCollector(registry=CognitePrometheus.registry)
+        self.info = Info("host", "Host info", namespace=self.namespace, registry=CognitePrometheus.registry)
+        self.info.info({"hostname": socket.gethostname(), "fqdn": socket.getfqdn()})
+        self.process = ProcessCollector(namespace=self.namespace, registry=CognitePrometheus.registry)
         self.platform = PlatformCollector(registry=CognitePrometheus.registry)
 
-        self.time_series_counter = Counter(
+        self.created_time_series_counter = Counter(
             "created_time_series_total",
             "Number of time series created since the extractor started running",
-            labelnames=["data_type", "project_name"],
+            namespace=self.namespace,
+            labelnames=self.labels,
             registry=CognitePrometheus.registry,
-        )
+        ).labels(*self.label_values)
 
         self.all_data_points_counter = Counter(
             "posted_data_points_total",
             "Number of datapoints posted since the extractor started running",
-            labelnames=["data_type", "project_name"],
+            namespace=self.namespace,
+            labelnames=self.labels,
             registry=CognitePrometheus.registry,
-        )
+        ).labels(*self.label_values)
 
-        self.time_series_data_points_counter = Counter(
-            "posted_data_points_per_time_series_total",
-            "Number of datapoints posted per time series (based on external ID) since the extractor started running",
-            labelnames=["data_type", "external_id", "project_name"],
+        self.count_of_time_series_gauge = Gauge(
+            "posted_time_series_count",
+            "The number of timeseries that had valid datapoints in the current file",
+            namespace=self.namespace,
+            labelnames=self.labels,
             registry=CognitePrometheus.registry,
-        )
+        ).labels(*self.label_values)
 
-    def incr_time_series_counter(self, amount: int = 1) -> None:
-        self.time_series_counter.labels(data_type=self.data_type, project_name=self.project_name).inc(amount)
+        self.available_csv_files_gauge = Gauge(
+            "available_csv_files",
+            "Number of csv files in the folder that could be processed by the extractor",
+            namespace=self.namespace,
+            labelnames=self.labels,
+            registry=CognitePrometheus.registry,
+        ).labels(*self.label_values)
+
+        self.unprocessed_files_gauge = Gauge(
+            "unprocessed_files",
+            "Number of csv files that remains to be processed in this batch",
+            namespace=self.namespace,
+            labelnames=self.labels,
+            registry=CognitePrometheus.registry,
+        ).labels(*self.label_values)
+
+        self.successfully_processed_files_gauge = Gauge(
+            "successfully_processed_files",
+            "Number of csv files that has been successfully processed in this batch",
+            namespace=self.namespace,
+            labelnames=self.labels,
+            registry=CognitePrometheus.registry,
+        ).labels(*self.label_values)
+
+    def incr_created_time_series_counter(self, amount: int = 1) -> None:
+        self.created_time_series_counter.inc(amount)
 
     def incr_total_data_points_counter(self, amount: int) -> None:
-        self.all_data_points_counter.labels(data_type=self.data_type, project_name=self.project_name).inc(amount)
-
-    def incr_data_points_counter(self, external_id: str, amount: int) -> None:
-        self.time_series_data_points_counter.labels(data_type=self.data_type, external_id=external_id, project_name=self.project_name).inc(amount)
+        self.all_data_points_counter.inc(amount)
 
     def push(self):
         try:
