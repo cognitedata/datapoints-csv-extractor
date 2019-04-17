@@ -32,14 +32,13 @@ def configure_prometheus(live: bool, project_name):
 
 
 class Prometheus:
-    labels = ["data_type", "project_name"]
+    labels = ["project_name"]
 
     def __init__(self, prometheus, live: bool, project_name: str):
         self.project_name = project_name
         self.prometheus = prometheus
-        self.data_type = "live" if live else "historical"
         self.namespace = f"csv_live" if live else f"csv_hist"
-        self.label_values = (self.data_type, self.project_name)
+        self.label_values = {self.project_name}
 
         self.info = Info("host", "Host info", namespace=self.namespace, registry=CognitePrometheus.registry)
         self.info.info({"hostname": socket.gethostname(), "fqdn": socket.getfqdn()})
