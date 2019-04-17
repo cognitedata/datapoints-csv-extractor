@@ -13,10 +13,11 @@ Changes are grouped as follows
 - `Security` in case of vulnerabilities.
 
 
-## [Unreleased]
+## [0.1.1] - 2019-04-17
 ### Added
 - New metrics for files
 - Cognite Fusion project name to metrics labels
+- Project name to Prometheus metrics
 
 ### Changed
 - Replaced metrics for datapoints per timeseries with count of timeseries
