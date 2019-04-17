@@ -13,6 +13,10 @@ Changes are grouped as follows
 - `Security` in case of vulnerabilities.
 
 
+## [0.1.2] - 2019-04-17
+### Changed
+- Moved live/historical distinction from Prometheus label to metric name
+
 ## [0.1.1] - 2019-04-17
 ### Added
 - New metrics for files
