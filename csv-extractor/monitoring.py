@@ -41,7 +41,7 @@ class Prometheus:
         self.data_type = "live" if live else "historical"
         self.label_values = (self.data_type, self.project_name)
 
-        self.info = Info("host_info", "Host info", namespace=self.namespace, registry=CognitePrometheus.registry)
+        self.info = Info("host", "Host info", namespace=self.namespace, registry=CognitePrometheus.registry)
         self.info.info({"hostname": socket.gethostname(), "fqdn": socket.getfqdn()})
         self.process = ProcessCollector(namespace=self.namespace, registry=CognitePrometheus.registry)
         self.platform = PlatformCollector(registry=CognitePrometheus.registry)

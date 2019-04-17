@@ -89,6 +89,7 @@ def process_csv_file(client, monitor, csv_path, existing_time_series) -> None:
     logger.info("Processed {} datapoints from {}".format(count_of_data_points, csv_path))
     monitor.incr_total_data_points_counter(count_of_data_points)
     monitor.count_of_time_series_gauge.set(len(unique_external_ids))
+    monitor.push()
 
 
 def process_files(client, monitor, paths, time_series_cache, failed_path) -> None:
