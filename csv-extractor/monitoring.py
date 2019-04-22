@@ -37,7 +37,7 @@ class Prometheus:
     def __init__(self, prometheus, live: bool, project_name: str):
         self.project_name = project_name
         self.prometheus = prometheus
-        self.namespace = f"csv_live" if live else f"csv_hist"
+        self.namespace = "csv_live" if live else "csv_hist"
         self.label_values = {self.project_name}
 
         self.info = Info("host", "Host info", namespace=self.namespace, registry=CognitePrometheus.registry)
@@ -63,7 +63,15 @@ class Prometheus:
 
         self.count_of_time_series_gauge = Gauge(
             "posted_time_series_count",
-            "The number of timeseries that had valid datapoints in the current file",
+            "Number of timeseries that had valid datapoints in the current file",
+            namespace=self.namespace,
+            labelnames=self.labels,
+            registry=CognitePrometheus.registry,
+        ).labels(*self.label_values)
+
+        self.processing_failed_counter = Counter(
+            "failed_processing_files",
+            "Number of files where processing failed since the extractor started running",
             namespace=self.namespace,
             labelnames=self.labels,
             registry=CognitePrometheus.registry,
@@ -93,10 +101,13 @@ class Prometheus:
             registry=CognitePrometheus.registry,
         ).labels(*self.label_values)
 
+    def incr_failed_files_counter(self, amount: int = 1) -> None:
+        self.processing_failed_counter.inc(amount)
+
     def incr_created_time_series_counter(self, amount: int = 1) -> None:
         self.created_time_series_counter.inc(amount)
 
-    def incr_total_data_points_counter(self, amount: int) -> None:
+    def incr_total_data_points_counter(self, amount: int = 1) -> None:
         self.all_data_points_counter.inc(amount)
 
     def push(self):

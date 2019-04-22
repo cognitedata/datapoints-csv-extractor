@@ -53,15 +53,15 @@ def create_time_series(client, name: str, external_id: str) -> None:
     _log_error(client.time_series.post_time_series, [new_time_series])
 
 
-def process_csv_file(client, monitor, csv_path, existing_time_series) -> None:
+def process_csv_file(client, monitor, csv_path, existing_time_series):
     """Find datapoints inside a single csv file and send it to CDP."""
+    df = pandas.read_csv(csv_path, encoding="latin-1", delimiter=";", quotechar='"', skiprows=[1], index_col=0)
+
     count_of_data_points = 0
     unique_external_ids = set()  # Count number of time series processed
     current_time_series = []  # List of time series being processed
 
-    df = pandas.read_csv(csv_path, encoding="latin-1", delimiter=";", quotechar='"', skiprows=[1], index_col=0)
     timestamps = [int(o) * 1000 for o in df.index.tolist()]
-
     for col in df:
         if len(current_time_series) >= BATCH_MAX:
             _log_error(client.datapoints.post_multi_time_series_datapoints, current_time_series)
@@ -86,35 +86,41 @@ def process_csv_file(client, monitor, csv_path, existing_time_series) -> None:
     if current_time_series:
         _log_error(client.datapoints.post_multi_time_series_datapoints, current_time_series)
 
-    logger.info("Processed {} datapoints from {}".format(count_of_data_points, csv_path))
-    monitor.incr_total_data_points_counter(count_of_data_points)
-    monitor.count_of_time_series_gauge.set(len(unique_external_ids))
-    monitor.push()
+    return count_of_data_points, len(unique_external_ids)
 
 
 def process_files(client, monitor, paths, time_series_cache, failed_path) -> None:
     """Process one csv file at a time, and either delete it or possibly move it when done."""
-    processed_files_count = 0
     remaining_files_count = len(paths)
+    monitor.successfully_processed_files_gauge.set(0)
 
     for path in paths:
         try:
             try:
-                process_csv_file(client, monitor, path, time_series_cache)
+                data_points_count, external_ids_count = process_csv_file(client, monitor, path, time_series_cache)
+            except IOError as exc:
+                logger.debug("Unable to open file {}: {!s}".format(path, exc))
             except Exception as exc:
                 logger.error("Parsing of file {} failed: {!s}".format(path, exc), exc_info=exc)
+                monitor.incr_failed_files_counter()
+
                 if failed_path is not None:
                     failed_path.mkdir(parents=True, exist_ok=True)
                     path.replace(failed_path.joinpath(path.name))
+
             else:
+                logger.info("Processed {} datapoints from {}".format(data_points_count, path))
+                monitor.successfully_processed_files_gauge.inc()
+                monitor.count_of_time_series_gauge.set(external_ids_count)
+                monitor.incr_total_data_points_counter(data_points_count)
+
                 path.unlink()
-                processed_files_count += 1
+
         except IOError as exc:
             logger.warning("Failed to delete/move file {}: {!s}".format(path, exc))
 
         remaining_files_count -= 1
         monitor.unprocessed_files_gauge.set(remaining_files_count)
-        monitor.successfully_processed_files_gauge.set(processed_files_count)
         monitor.push()
 
 
