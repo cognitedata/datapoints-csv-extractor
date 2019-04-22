@@ -124,9 +124,9 @@ def process_files(client, monitor, paths, time_series_cache, failed_path) -> Non
         monitor.push()
 
 
-def find_files_in_path(monitor, folder_path, after_timestamp: int, limit: int = None, newest_first: bool = True):
+def find_files_in_path(folder_path, after_timestamp: int, newest_first: bool = True):
     """Return csv files in 'folder_path' sorted by 'newest_first' on last modified timestamp of files."""
-    before_timestamp = int(time.time() - 2)  # Process files more than 2 seconds old
+    before_timestamp = int(time.time() - 2)  # Only process files older than 2 seconds
     all_relevant_paths = []
 
     for path in folder_path.glob("*.csv"):
@@ -138,12 +138,7 @@ def find_files_in_path(monitor, folder_path, after_timestamp: int, limit: int = 
         if after_timestamp < modified_timestamp < before_timestamp:
             all_relevant_paths.append((path, modified_timestamp))
 
-    logger.info("Found {} relevant files to process in {}".format(len(all_relevant_paths), folder_path))
-    monitor.available_csv_files_gauge.set(len(all_relevant_paths))
-    monitor.push()
-
-    paths = [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=newest_first)]
-    return paths if not limit else paths[:limit]
+    return [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=newest_first)]
 
 
 def get_all_time_series(client):
@@ -171,16 +166,25 @@ def extract_data_points(
     client, monitor, time_series_cache, live_mode: bool, start_timestamp: int, folder_path, failed_path
 ):
     """Find datapoints in files in 'folder_path' and send them to CDP."""
+
+    def find_files(newest_first):
+        all_relevant_paths = find_files_in_path(folder_path, start_timestamp, newest_first=newest_first)
+
+        logger.info("Found {} relevant files to process in {}".format(len(all_relevant_paths), folder_path))
+        monitor.available_csv_files_gauge.set(len(all_relevant_paths))
+        monitor.push()
+        return all_relevant_paths
+
     try:
         if live_mode:
             while True:
-                paths = find_files_in_path(monitor, folder_path, start_timestamp, limit=20)
-                if paths:
-                    process_files(client, monitor, paths, time_series_cache, failed_path)
+                paths = find_files(newest_first=True)
+                if paths:  # We only process 20 newest files, before we again look for newer files
+                    process_files(client, monitor, paths[:20], time_series_cache, failed_path)
                 time.sleep(2)
 
         else:
-            paths = find_files_in_path(monitor, folder_path, start_timestamp, newest_first=False)
+            paths = find_files(newest_first=False)
             if paths:
                 process_files(client, monitor, paths, time_series_cache, failed_path)
         logger.info("Extraction complete")
