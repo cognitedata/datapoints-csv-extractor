@@ -26,26 +26,22 @@ def extract_data_points(
     In `live_mode` will process only 20 newest files, and the search for new files again.
     If not live mode, it will start with oldest files first, and process all then quit.
     """
-    try:
-        while True:
-            files = find_files_in_path(folder_path, start_timestamp, newest_first=live_mode)
+    while True:
+        files = find_files_in_path(folder_path, start_timestamp, newest_first=live_mode)
 
-            logger.info("Found {} relevant files to process in {}".format(len(files), folder_path))
-            monitor.available_csv_files_gauge.set(len(files))
-            monitor.push()
+        logger.info("Found {} relevant files to process in {}".format(len(files), folder_path))
+        monitor.available_csv_files_gauge.set(len(files))
+        monitor.push()
 
-            if files:
-                files = files[:20] if live_mode else files  # We only process 20 newest before we look again for live
-                process_files(client, monitor, files, time_series_cache, failed_path)
+        if files:
+            files = files[:20] if live_mode else files  # We only process 20 newest before we look again for live
+            process_files(client, monitor, files, time_series_cache, failed_path)
 
-            if live_mode:
-                time.sleep(2)
-            else:
-                logger.info("Extraction complete")
-                break
-
-    except KeyboardInterrupt:
-        logger.warning("Extractor stopped")
+        if live_mode:
+            time.sleep(2)
+        else:
+            logger.info("Extraction complete")
+            break
 
 
 def get_all_time_series(client):

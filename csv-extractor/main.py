@@ -89,9 +89,12 @@ def main(args):
     project_name = client._project
     monitor = configure_prometheus(args.live, project_name) 
 
-    extract_data_points(
-        client, monitor, get_all_time_series(client), args.live, start_timestamp, input_path, failed_path
-    )
+    try:
+        extract_data_points(
+            client, monitor, get_all_time_series(client), args.live, start_timestamp, input_path, failed_path
+        )
+    except KeyboardInterrupt:
+        logger.warning("Extractor stopped")
 
 
 if __name__ == "__main__":
