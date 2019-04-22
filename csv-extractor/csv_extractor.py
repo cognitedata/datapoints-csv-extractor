@@ -18,6 +18,57 @@ logger = logging.getLogger(__name__)
 BATCH_MAX = 1000  # Maximum number of time series batched at once
 
 
+def extract_data_points(
+    client, monitor, time_series_cache, live_mode: bool, start_timestamp: int, folder_path, failed_path
+):
+    """Find and publish all data points in files found in 'folder_path'.
+
+    In `live_mode` will process only 20 newest files, and the search for new files again.
+    If not live mode, it will start with oldest files first, and process all then quit.
+    """
+    try:
+        while True:
+            files = find_files_in_path(folder_path, start_timestamp, newest_first=live_mode)
+
+            logger.info("Found {} relevant files to process in {}".format(len(files), folder_path))
+            monitor.available_csv_files_gauge.set(len(files))
+            monitor.push()
+
+            if files:
+                files = files[:20] if live_mode else files  # We only process 20 newest before we look again for live
+                process_files(client, monitor, files, time_series_cache, failed_path)
+
+            if live_mode:
+                time.sleep(2)
+            else:
+                logger.info("Extraction complete")
+                break
+
+    except KeyboardInterrupt:
+        logger.warning("Extractor stopped")
+
+
+def get_all_time_series(client):
+    """Return map of time series externalId -> name of all time series that has externalId."""
+    for i in range(10):
+        try:
+            res = client.time_series.get_time_series(include_metadata=True, autopaging=True)
+        except APIError as exc:
+            logger.error("Failed to get timeseries: {!s}".format(exc))
+            time.sleep(i)
+        else:
+            break
+    else:
+        logger.fatal("Could not fetch time series data from CDP, exiting!")
+        sys.exit(1)
+
+    return {
+        i["metadata"]["externalID"]: i["name"]
+        for i in res.to_json()
+        if "metadata" in i and "externalID" in i["metadata"]
+    }
+
+
 def _log_error(func, *args, **vargs):
     """Call 'func' with args, then log if an exception was raised."""
     try:
@@ -139,54 +190,3 @@ def find_files_in_path(folder_path, after_timestamp: int, newest_first: bool = T
             all_relevant_paths.append((path, modified_timestamp))
 
     return [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=newest_first)]
-
-
-def get_all_time_series(client):
-    """Return map of timeseries externalId -> name of all timeseries that has externalId."""
-    for i in range(10):
-        try:
-            res = client.time_series.get_time_series(include_metadata=True, autopaging=True)
-        except APIError as exc:
-            logger.error("Failed to get timeseries: {!s}".format(exc))
-            time.sleep(i)
-        else:
-            break
-    else:
-        logger.fatal("Could not fetch time series data from CDP, exiting!")
-        sys.exit(1)
-
-    return {
-        i["metadata"]["externalID"]: i["name"]
-        for i in res.to_json()
-        if "metadata" in i and "externalID" in i["metadata"]
-    }
-
-
-def extract_data_points(
-    client, monitor, time_series_cache, live_mode: bool, start_timestamp: int, folder_path, failed_path
-):
-    """Find datapoints in files in 'folder_path' and send them to CDP."""
-
-    def find_files(newest_first):
-        all_relevant_paths = find_files_in_path(folder_path, start_timestamp, newest_first=newest_first)
-
-        logger.info("Found {} relevant files to process in {}".format(len(all_relevant_paths), folder_path))
-        monitor.available_csv_files_gauge.set(len(all_relevant_paths))
-        monitor.push()
-        return all_relevant_paths
-
-    try:
-        if live_mode:
-            while True:
-                paths = find_files(newest_first=True)
-                if paths:  # We only process 20 newest files, before we again look for newer files
-                    process_files(client, monitor, paths[:20], time_series_cache, failed_path)
-                time.sleep(2)
-
-        else:
-            paths = find_files(newest_first=False)
-            if paths:
-                process_files(client, monitor, paths, time_series_cache, failed_path)
-        logger.info("Extraction complete")
-    except KeyboardInterrupt:
-        logger.warning("Extractor stopped")
