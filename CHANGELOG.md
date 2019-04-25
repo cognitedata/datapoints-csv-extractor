@@ -13,7 +13,7 @@ Changes are grouped as follows
 - `Security` in case of vulnerabilities.
 
 
-## Unreleased
+## [0.1.3] - 2019-04-25
 ### Added
 - Metrics on number of files that we failed to process
 
