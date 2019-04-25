@@ -13,6 +13,10 @@ Changes are grouped as follows
 - `Security` in case of vulnerabilities.
 
 
+## Unreleased
+### Added
+- Metrics on number of files that we failed to process
+
 ## [0.1.2] - 2019-04-17
 ### Changed
 - Moved live/historical distinction from Prometheus label to metric name
