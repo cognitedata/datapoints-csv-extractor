@@ -3,11 +3,13 @@
 A module for extracting datapoints from CSV files.
 """
 import logging
+import threading
 import sys
 import time
+import csv
 from operator import itemgetter
+from typing import Dict
 
-import pandas
 from cognite.client import APIError
 from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
 from cognite.client.stable.time_series import TimeSeries
@@ -78,7 +80,7 @@ def create_data_points(values, timestamps):
     data_points = []
 
     for i, value_string in enumerate(values):
-        if pandas.notnull(value_string):
+        if value_string != '':
             if not isinstance(value_string, str):
                 value = value_string
             else:
@@ -100,29 +102,46 @@ def create_time_series(client, name: str, external_id: str) -> None:
     _log_error(client.time_series.post_time_series, [new_time_series])
 
 
+def get_parsed_file(path) -> Dict[str, str]:
+    """Parse the csv file and return the data in dictionary"""
+    parsed_file = {}
+    with open(path, "r", encoding="latin-1") as f:
+        data = csv.DictReader(f, delimiter=";")
+        for row in data:
+            for (k, v) in row.items():
+                try:
+                    parsed_file[k].append(v)
+                except KeyError:
+                    parsed_file[k] = [v]
+    return parsed_file
+
+
 def process_csv_file(client, monitor, csv_path, existing_time_series):
-    """Find datapoints inside a single csv file and send it to CDP."""
-    df = pandas.read_csv(csv_path, encoding="latin-1", delimiter=";", quotechar='"', skiprows=[1], index_col=0)
+    parsed_file = get_parsed_file(csv_path)
+
+    timestamps = parsed_file[''][1:] #ignore garbage value in first line
+    del parsed_file[''] #remove the timestamps from the dictionary
 
     count_of_data_points = 0
     unique_external_ids = set()  # Count number of time series processed
     current_time_series = []  # List of time series being processed
+    network_threads = []
 
-    timestamps = [int(o) * 1000 for o in df.index.tolist()]
-    for col in df:
-        if len(current_time_series) >= BATCH_MAX:
-            _log_error(client.datapoints.post_multi_time_series_datapoints, current_time_series)
+    for (col_name, v) in parsed_file.items():
+        if len(current_time_series) >= 1000:
+            network_threads.append(threading.Thread(target=_log_error, args=(client.datapoints.post_multi_time_series_datapoints, current_time_series)))
+
             current_time_series.clear()
 
-        name = col.rpartition(":")[2].strip()
-        external_id = col.rpartition(":")[0].strip()
+        name = col_name.rpartition(":")[2].strip()
+        external_id = col_name.rpartition(":")[0].strip()
 
         if external_id not in existing_time_series:
             create_time_series(client, name, external_id)
             existing_time_series[external_id] = name
             monitor.incr_created_time_series_counter()
 
-        data_points = create_data_points(df[col].tolist(), timestamps)
+        data_points = create_data_points(v[1:], timestamps)
         if data_points:
             current_time_series.append(
                 TimeseriesWithDatapoints(name=existing_time_series[external_id], datapoints=data_points)
@@ -131,20 +150,29 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
             unique_external_ids.add(external_id)
 
     if current_time_series:
-        _log_error(client.datapoints.post_multi_time_series_datapoints, current_time_series)
+        network_threads.append(threading.Thread(target=_log_error, args=(client.datapoints.post_multi_time_series_datapoints, current_time_series)))
 
-    return count_of_data_points, len(unique_external_ids)
+    return count_of_data_points, len(unique_external_ids), network_threads
 
 
 def process_files(client, monitor, paths, time_series_cache, failed_path) -> None:
     """Process one csv file at a time, and either delete it or possibly move it when done."""
     remaining_files_count = len(paths)
     monitor.successfully_processed_files_gauge.set(0)
-
+    network_threads = []
     for path in paths:
         try:
             try:
-                data_points_count, external_ids_count = process_csv_file(client, monitor, path, time_series_cache)
+                count_data_points, count_ext_ids, threads = process_csv_file(client, monitor, path, time_series_cache)
+                network_threads += threads
+                # post the requests if more than 20 or if we're on the last file
+                if len(network_threads) > 20 or path == paths[-1]:
+                    for t in network_threads:
+                        t.start()
+                    for t in network_threads:
+                        t.join()
+                    network_threads = []
+
             except IOError as exc:
                 logger.debug("Unable to open file {}: {!s}".format(path, exc))
             except Exception as exc:
@@ -156,10 +184,10 @@ def process_files(client, monitor, paths, time_series_cache, failed_path) -> Non
                     path.replace(failed_path.joinpath(path.name))
 
             else:
-                logger.info("Processed {} datapoints from {}".format(data_points_count, path))
+                logger.info("Processed {} datapoints from {}".format(count_data_points, path))
                 monitor.successfully_processed_files_gauge.inc()
-                monitor.count_of_time_series_gauge.set(external_ids_count)
-                monitor.incr_total_data_points_counter(data_points_count)
+                monitor.count_of_time_series_gauge.set(count_ext_ids)
+                monitor.incr_total_data_points_counter(count_data_points)
 
                 path.unlink()
 
