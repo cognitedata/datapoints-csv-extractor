@@ -9,6 +9,7 @@ import time
 import csv
 from operator import itemgetter
 from typing import Dict
+from collections import defaultdict
 
 from cognite.client import APIError
 from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
@@ -80,15 +81,12 @@ def create_data_points(values, timestamps):
     data_points = []
 
     for i, value_string in enumerate(values):
-        if value_string != '':
-            if not isinstance(value_string, str):
-                value = value_string
-            else:
-                try:
-                    value = float(value_string.replace(",", "."))
-                except ValueError as error:
-                    logger.info(error)
-                    continue
+        if value_string:
+            try:
+                value = float(value_string.replace(",", "."))
+            except ValueError as error:
+                logger.info(error)
+                continue
             data_points.append(Datapoint(timestamp=timestamps[i], value=value))
 
     return data_points
@@ -102,17 +100,14 @@ def create_time_series(client, name: str, external_id: str) -> None:
     _log_error(client.time_series.post_time_series, [new_time_series])
 
 
-def get_parsed_file(path) -> Dict[str, str]:
-    """Parse the csv file and return the data in dictionary"""
-    parsed_file = {}
+def get_parsed_file(path) -> Dict[str, list]:
+    """Parse the csv file and return the data in a {col_name -> list_of_row_items} dictionary"""
+    parsed_file = defaultdict(list)
     with open(path, "r", encoding="latin-1") as f:
         data = csv.DictReader(f, delimiter=";")
         for row in data:
-            for (k, v) in row.items():
-                try:
-                    parsed_file[k].append(v)
-                except KeyError:
-                    parsed_file[k] = [v]
+            for k, v in row.items():
+                parsed_file[k].append(v)
     return parsed_file
 
 
@@ -151,28 +146,20 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
 
     if current_time_series:
         network_threads.append(threading.Thread(target=_log_error, args=(client.datapoints.post_multi_time_series_datapoints, current_time_series)))
+    [t.start() for t in network_threads]
+    [t.join() for t in network_threads]
 
-    return count_of_data_points, len(unique_external_ids), network_threads
+    return count_of_data_points, len(unique_external_ids)
 
 
 def process_files(client, monitor, paths, time_series_cache, failed_path) -> None:
     """Process one csv file at a time, and either delete it or possibly move it when done."""
     remaining_files_count = len(paths)
     monitor.successfully_processed_files_gauge.set(0)
-    network_threads = []
     for path in paths:
         try:
             try:
-                count_data_points, count_ext_ids, threads = process_csv_file(client, monitor, path, time_series_cache)
-                network_threads += threads
-                # post the requests if more than 20 or if we're on the last file
-                if len(network_threads) > 20 or path == paths[-1]:
-                    for t in network_threads:
-                        t.start()
-                    for t in network_threads:
-                        t.join()
-                    network_threads = []
-
+                count_data_points, count_ext_ids = process_csv_file(client, monitor, path, time_series_cache)
             except IOError as exc:
                 logger.debug("Unable to open file {}: {!s}".format(path, exc))
             except Exception as exc:
