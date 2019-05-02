@@ -4,7 +4,6 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [packages]
-pandas = "*"
 cognite-sdk = "==0.13.2"
 cognite-logger = "==0.4.*"
 cognite-prometheus = "==0.1.6"

@@ -114,8 +114,8 @@ def get_parsed_file(path) -> Dict[str, list]:
 def process_csv_file(client, monitor, csv_path, existing_time_series):
     parsed_file = get_parsed_file(csv_path)
 
-    timestamps = parsed_file[''][1:] #ignore garbage value in first line
-    del parsed_file[''] #remove the timestamps from the dictionary
+    timestamps = parsed_file[""][1:]  # ignore garbage value in first line
+    del parsed_file[""]  # remove the timestamps from the dictionary
 
     count_of_data_points = 0
     unique_external_ids = set()  # Count number of time series processed
@@ -124,7 +124,11 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
 
     for col_name, v in parsed_file.items():
         if len(current_time_series) >= 1000:
-            network_threads.append(threading.Thread(target=_log_error, args=(client.datapoints.post_multi_time_series_datapoints, current_time_series)))
+            network_threads.append(
+                threading.Thread(
+                    target=_log_error, args=(client.datapoints.post_multi_time_series_datapoints, current_time_series)
+                )
+            )
 
             current_time_series.clear()
 
@@ -145,7 +149,11 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
             unique_external_ids.add(external_id)
 
     if current_time_series:
-        network_threads.append(threading.Thread(target=_log_error, args=(client.datapoints.post_multi_time_series_datapoints, current_time_series)))
+        network_threads.append(
+            threading.Thread(
+                target=_log_error, args=(client.datapoints.post_multi_time_series_datapoints, current_time_series)
+            )
+        )
     [t.start() for t in network_threads]
     [t.join() for t in network_threads]
 
