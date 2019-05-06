@@ -112,6 +112,7 @@ def get_parsed_file(path) -> Dict[str, list]:
 
 
 def process_csv_file(client, monitor, csv_path, existing_time_series):
+    start_time  = time.time()
     parsed_file = get_parsed_file(csv_path)
 
     timestamps = parsed_file[""][1:]  # ignore garbage value in first line
@@ -154,8 +155,13 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
                 target=_log_error, args=(client.datapoints.post_multi_time_series_datapoints, current_time_series)
             )
         )
+    end_time_1 = time.time()
+    logger.debug("Time taken to process file " + str(csv_path) + " " + str((end_time_1 - start_time)))
     [t.start() for t in network_threads]
     [t.join() for t in network_threads]
+    logger.debug("Time take to complete network requests & total time to ingest file  " + str(csv_path) + " " +
+                str(time.time()-end_time_1) + " " +
+                 str(time.time() - start_time))
 
     return count_of_data_points, len(unique_external_ids)
 
