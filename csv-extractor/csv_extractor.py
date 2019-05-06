@@ -112,7 +112,6 @@ def get_parsed_file(path) -> Dict[str, list]:
 
 
 def process_csv_file(client, monitor, csv_path, existing_time_series):
-    start_time  = time.time()
     parsed_file = get_parsed_file(csv_path)
 
     timestamps = parsed_file[""][1:]  # ignore garbage value in first line
@@ -155,25 +154,21 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
                 target=_log_error, args=(client.datapoints.post_multi_time_series_datapoints, current_time_series)
             )
         )
-    end_time_1 = time.time()
-    logger.debug("Time taken to process file " + str(csv_path) + " " + str((end_time_1 - start_time)))
-    [t.start() for t in network_threads]
-    [t.join() for t in network_threads]
-    logger.debug("Time take to complete network requests & total time to ingest file  " + str(csv_path) + " " +
-                str(time.time()-end_time_1) + " " +
-                 str(time.time() - start_time))
 
-    return count_of_data_points, len(unique_external_ids)
+    return count_of_data_points, len(unique_external_ids), network_threads
 
 
 def process_files(client, monitor, paths, time_series_cache, failed_path) -> None:
     """Process one csv file at a time, and either delete it or possibly move it when done."""
     remaining_files_count = len(paths)
     monitor.successfully_processed_files_gauge.set(0)
+    paths_to_unlink = list()
+    network_threads = []
     for path in paths:
         try:
             try:
-                count_data_points, count_ext_ids = process_csv_file(client, monitor, path, time_series_cache)
+                count_data_points, count_ext_ids, threads = process_csv_file(client, monitor, path, time_series_cache)
+
             except IOError as exc:
                 logger.debug("Unable to open file {}: {!s}".format(path, exc))
             except Exception as exc:
@@ -185,12 +180,16 @@ def process_files(client, monitor, paths, time_series_cache, failed_path) -> Non
                     path.replace(failed_path.joinpath(path.name))
 
             else:
+                paths_to_unlink.append(path)
+                if len(paths_to_unlink) > 3: # 4 files processed, 16 network threads
+                    [t.start() for t in network_threads]
+                    [t.join() for t in network_threads]
+                    [p.unlink() for p in paths_to_unlink]
+                    paths_to_unlink = []
                 logger.info("Processed {} datapoints from {}".format(count_data_points, path))
                 monitor.successfully_processed_files_gauge.inc()
                 monitor.count_of_time_series_gauge.set(count_ext_ids)
                 monitor.incr_total_data_points_counter(count_data_points)
-
-                path.unlink()
 
         except IOError as exc:
             logger.warning("Failed to delete/move file {}: {!s}".format(path, exc))
