@@ -87,7 +87,7 @@ def create_data_points(values, timestamps):
             except ValueError as error:
                 logger.info(error)
                 continue
-            data_points.append(Datapoint(timestamp=timestamps[i], value=value))
+            data_points.append(Datapoint(timestamp=int(timestamps[i])*1000, value=value))
 
     return data_points
 
@@ -172,7 +172,7 @@ def process_files(client, monitor, paths, time_series_cache, failed_path) -> Non
         try:
             try:
                 count_data_points, count_ext_ids, threads = process_csv_file(client, monitor, path, time_series_cache)
-
+                network_threads += threads
             except IOError as exc:
                 logger.debug("Unable to open file {}: {!s}".format(path, exc))
             except Exception as exc:
@@ -186,14 +186,15 @@ def process_files(client, monitor, paths, time_series_cache, failed_path) -> Non
             else:
                 paths_to_unlink.append(path)
                 start_time = time.time()
-                if len(paths_to_unlink) > 3: # 4 files processed, 16 network threads
+                if len(paths_to_unlink) > 9: # 10 files processed, 40 network threads
                     [t.start() for t in network_threads]
                     [t.join() for t in network_threads]
                     check_point = time.time()
-                    logger.debug("Time taken to post the data from 4 files", check_point - start_time)
+                    logger.debug("Time taken to post the data from 10 files", check_point - start_time)
                     [p.unlink() for p in paths_to_unlink]
                     logger.debug("Time taken to delete the files ", time.time() - check_point)
                     paths_to_unlink = []
+                    network_threads = []
                 logger.info("Processed {} datapoints from {}".format(count_data_points, path))
                 monitor.successfully_processed_files_gauge.inc()
                 monitor.count_of_time_series_gauge.set(count_ext_ids)
