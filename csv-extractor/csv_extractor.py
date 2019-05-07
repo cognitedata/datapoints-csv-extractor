@@ -87,7 +87,7 @@ def create_data_points(values, timestamps):
             except ValueError as error:
                 logger.info(error)
                 continue
-            data_points.append(Datapoint(timestamp=timestamps[i], value=value))
+            data_points.append(Datapoint(timestamp=int(timestamps[i])*1000, value=value))
 
     return data_points
 
@@ -186,7 +186,7 @@ def process_files(client, monitor, paths, time_series_cache, failed_path) -> Non
             else:
                 paths_to_unlink.append(path)
                 start_time = time.time()
-                if len(paths_to_unlink) > 3: # 4 files processed, 16 network threads
+                if len(paths_to_unlink) > 4: # 5 files processed, 20 network threads
                     [t.start() for t in network_threads]
                     [t.join() for t in network_threads]
                     check_point = time.time()
