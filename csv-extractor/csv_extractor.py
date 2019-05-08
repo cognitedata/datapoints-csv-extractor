@@ -87,7 +87,7 @@ def create_data_points(values, timestamps):
             except ValueError as error:
                 logger.info(error)
                 continue
-            data_points.append(Datapoint(timestamp=timestamps[i], value=value))
+            data_points.append(Datapoint(timestamp=int(timestamps[i])*1000, value=value))
 
     return data_points
 
@@ -156,10 +156,10 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
             )
         )
     end_time_1 = time.time()
-    logger.debug("Time taken to process file " + str(csv_path) + " " + str((end_time_1 - start_time)))
+    logger.info("Time taken to process file " + str(csv_path) + " " + str((end_time_1 - start_time)))
     [t.start() for t in network_threads]
     [t.join() for t in network_threads]
-    logger.debug("Time take to complete network requests & total time to ingest file  " + str(csv_path) + " " +
+    logger.info("Time take to complete network requests & total time to ingest file  " + str(csv_path) + " " +
                 str(time.time()-end_time_1) + " " +
                  str(time.time() - start_time))
 
