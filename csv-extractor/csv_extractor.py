@@ -87,7 +87,7 @@ def create_data_points(values, timestamps):
             except ValueError as error:
                 logger.info(error)
                 continue
-            data_points.append(Datapoint(timestamp=timestamps[i], value=value))
+            data_points.append(Datapoint(timestamp=int(timestamps[i])*1000, value=value))
 
     return data_points
 
