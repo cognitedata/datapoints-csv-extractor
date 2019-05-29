@@ -2,14 +2,14 @@
 """
 A module for extracting datapoints from CSV files.
 """
-import logging
-import threading
-import sys
-import time
 import csv
+import logging
+import sys
+import threading
+import time
+from collections import defaultdict
 from operator import itemgetter
 from typing import Dict
-from collections import defaultdict
 
 from cognite.client import APIError
 from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
@@ -30,7 +30,7 @@ def extract_data_points(
     If not live mode, it will start with oldest files first, and process all then quit.
     """
     while True:
-        files = find_files_in_path(folder_path, start_timestamp, newest_first=live_mode)
+        files = find_files_in_path(folder_path, start_timestamp)
 
         logger.info("Found {} relevant files to process in {}".format(len(files), folder_path))
         monitor.available_csv_files_gauge.set(len(files))
@@ -87,7 +87,7 @@ def create_data_points(values, timestamps):
             except ValueError as error:
                 logger.info(error)
                 continue
-            data_points.append(Datapoint(timestamp=int(timestamps[i])*1000, value=value))
+            data_points.append(Datapoint(timestamp=int(timestamps[i]) * 1000, value=value))
 
     return data_points
 
@@ -112,7 +112,7 @@ def get_parsed_file(path) -> Dict[str, list]:
 
 
 def process_csv_file(client, monitor, csv_path, existing_time_series):
-    start_time  = time.time()
+    start_time = time.time()
     parsed_file = get_parsed_file(csv_path)
 
     timestamps = parsed_file[""][1:]  # ignore garbage value in first line
@@ -155,13 +155,16 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
                 target=_log_error, args=(client.datapoints.post_multi_time_series_datapoints, current_time_series)
             )
         )
+
     end_time_1 = time.time()
-    logger.debug("Time taken to process file " + str(csv_path) + " " + str((end_time_1 - start_time)))
+    logger.debug("Time taken to process {!s}: {:.2f} seconds".format(csv_path, end_time_1 - start_time))
     [t.start() for t in network_threads]
     [t.join() for t in network_threads]
-    logger.debug("Time take to complete network requests & total time to ingest file  " + str(csv_path) + " " +
-                str(time.time()-end_time_1) + " " +
-                 str(time.time() - start_time))
+    logger.debug(
+        "Time take to complete network requests & total time to ingest {!s}: {:.2f}s {:.2f}s".format(
+            csv_path, time.time() - end_time_1, time.time() - start_time
+        )
+    )
 
     return count_of_data_points, len(unique_external_ids)
 
@@ -200,8 +203,8 @@ def process_files(client, monitor, paths, time_series_cache, failed_path) -> Non
         monitor.push()
 
 
-def find_files_in_path(folder_path, after_timestamp: int, newest_first: bool = True):
-    """Return csv files in 'folder_path' sorted by 'newest_first' on last modified timestamp of files."""
+def find_files_in_path(folder_path, after_timestamp: int):
+    """Return csv files in 'folder_path' sorted by newest first on last modified timestamp of files."""
     before_timestamp = int(time.time() - 2)  # Only process files older than 2 seconds
     all_relevant_paths = []
 
@@ -214,4 +217,4 @@ def find_files_in_path(folder_path, after_timestamp: int, newest_first: bool = T
         if after_timestamp < modified_timestamp < before_timestamp:
             all_relevant_paths.append((path, modified_timestamp))
 
-    return [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=newest_first)]
+    return [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=True)]

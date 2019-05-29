@@ -12,15 +12,22 @@ Changes are grouped as follows
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## [0.1.5] - 2019-05-29
+### Added
+- Command line argument for setting log level
+
+### Changed
+- Historical also works on newest files first
+
+### Fixed
+- Timestamps are in milliseconds again
+
 ## [0.1.4] - 2019-05-02
 ### Changed
 - Process files with csv library instead of pandas, and post data in parallel after file is processed
 
 ### Removed
 - Pandas dependency
-
-### Fixed
-- Timestamps are in milliseconds again
 
 ## [0.1.3] - 2019-04-25
 ### Added
