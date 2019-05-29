@@ -19,6 +19,9 @@ Changes are grouped as follows
 ### Removed
 - Pandas dependency
 
+### Fixed
+- Timestamps are in milliseconds again
+
 ## [0.1.3] - 2019-04-25
 ### Added
 - Metrics on number of files that we failed to process
