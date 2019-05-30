@@ -21,6 +21,7 @@ Changes are grouped as follows
 
 ### Fixed
 - Timestamps are in milliseconds again
+- We sent empty list for all but the last request, fixed by copy
 
 ## [0.1.4] - 2019-05-02
 ### Changed

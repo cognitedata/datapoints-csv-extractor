@@ -127,7 +127,8 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
         if len(current_time_series) >= 1000:
             network_threads.append(
                 threading.Thread(
-                    target=_log_error, args=(client.datapoints.post_multi_time_series_datapoints, current_time_series)
+                    target=_log_error,
+                    args=(client.datapoints.post_multi_time_series_datapoints, current_time_series[:]),
                 )
             )
 
