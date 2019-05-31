@@ -2,15 +2,16 @@
 """
 A module for extracting datapoints from CSV files.
 """
-import logging
-import threading
-import sys
-import time
 import csv
+import logging
+import sys
+import threading
+import time
+from collections import defaultdict
+from itertools import chain
 from operator import itemgetter
 from typing import Dict
-from collections import defaultdict
-from queue import Queue
+
 from cognite.client import APIError
 from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
 from cognite.client.stable.time_series import TimeSeries
@@ -30,7 +31,7 @@ def extract_data_points(
     If not live mode, it will start with oldest files first, and process all then quit.
     """
     while True:
-        files = find_files_in_path(folder_path, start_timestamp, newest_first=live_mode)
+        files = find_files_in_path(folder_path, start_timestamp)
 
         logger.info("Found {} relevant files to process in {}".format(len(files), folder_path))
         monitor.available_csv_files_gauge.set(len(files))
@@ -87,7 +88,7 @@ def create_data_points(values, timestamps):
             except ValueError as error:
                 logger.info(error)
                 continue
-            data_points.append(Datapoint(timestamp=int(timestamps[i])*1000, value=value))
+            data_points.append(Datapoint(timestamp=int(timestamps[i]) * 1000, value=value))
 
     return data_points
 
@@ -112,6 +113,8 @@ def get_parsed_file(path) -> Dict[str, list]:
 
 
 def process_csv_file(client, monitor, csv_path, existing_time_series):
+    start_time = time.time()
+
     parsed_file = get_parsed_file(csv_path)
     timestamps = parsed_file[""][1:]  # ignore garbage value in first line
     del parsed_file[""]  # remove the timestamps from the dictionary
@@ -124,7 +127,8 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
         if len(current_time_series) >= 1000:
             network_threads.append(
                 threading.Thread(
-                    target=_log_error, args=(client.datapoints.post_multi_time_series_datapoints, current_time_series)
+                    target=_log_error,
+                    args=(client.datapoints.post_multi_time_series_datapoints, current_time_series[:]),
                 )
             )
 
@@ -153,74 +157,72 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
             )
         )
 
-    return count_of_data_points, len(unique_external_ids), network_threads, csv_path
+    logger.info("Time to process file {}: {:.2f} seconds".format(csv_path, time.time() - start_time))
+
+    return network_threads, count_of_data_points, len(unique_external_ids)
 
 
-def post_all_data(q, monitor, remaining_files_count):
-    all_threads = []
-    total_count_data_points = 0
-    total_count_ext_ids = 0
-    all_paths = []
-    for item in list(q.queue):
-        count_data_points, count_ext_ids, network_threads, csv_path = item
-        all_threads+=network_threads
-        total_count_data_points+=count_data_points
-        total_count_ext_ids+=count_ext_ids
-        all_paths.append(csv_path)
+def post_all_data(queue, monitor):
+    start_time = time.time()
 
-    [t.start() for t in all_threads]
-    [t.join() for t in all_threads]
-    for p in all_paths:
-        remaining_files_count -= 1
-        monitor.unprocessed_files_gauge.set(remaining_files_count)
-        monitor.successfully_processed_files_gauge.inc()
+    all_threads = list(chain(*map(itemgetter(0), queue)))
+    for thread in all_threads:
+        thread.start()
+    for thread in all_threads:
+        thread.join()
 
-    monitor.count_of_time_series_gauge.set(total_count_ext_ids)
-    monitor.incr_total_data_points_counter(total_count_data_points)
-    monitor.push()
-    [csv_path.unlink() for csv_path in all_paths]
+    for path in map(itemgetter(1), queue):
+        try:
+            path.unlink()
+        except IOError as exc:
+            logger.debug("Unable to delete file {}: {!s}".format(path, exc))
+
+    monitor.incr_total_data_points_counter(sum(map(itemgetter(2), queue)))
+
+    logger.info("Total time to send batch of request: {:.2f} seconds".format(time.time() - start_time))
 
 
 def process_files(client, monitor, paths, time_series_cache, failed_path) -> None:
     """Process one csv file at a time, and either delete it or possibly move it when done."""
-    remaining_files_count = len(paths)
     monitor.successfully_processed_files_gauge.set(0)
-    queue = Queue(maxsize=20)
-    st = time.time()
+    monitor.unprocessed_files_gauge.set(len(paths))
+    thread_queue = []
+    start_time = time.time()
+
     for path in paths:
         try:
-            try:
-                count_data_points, count_ext_ids, network_threads, csv_path  = process_csv_file(client, monitor, path, time_series_cache)
-                queue.put((count_data_points, count_ext_ids, network_threads, csv_path))
-            except IOError as exc:
-                logger.debug("Unable to open file {}: {!s}".format(path, exc))
-            except Exception as exc:
-                logger.error("Parsing of file {} failed: {!s}".format(path, exc), exc_info=exc)
-                monitor.incr_failed_files_counter()
-
-                if failed_path is not None:
-                    failed_path.mkdir(parents=True, exist_ok=True)
-                    path.replace(failed_path.joinpath(path.name))
-
-            else:
-                if queue.full():
-                    t = threading.Thread(target=_log_error, args=(
-                        post_all_data, queue, monitor, remaining_files_count))
-                    t.start()
-                    with queue.mutex:
-                        queue.queue.clear()
-
+            threads, data_points_count, time_series_count = process_csv_file(client, monitor, path, time_series_cache)
+            thread_queue.append((threads, path, data_points_count))
         except IOError as exc:
-            logger.warning("Failed to delete/move file {}: {!s}".format(path, exc))
+            logger.debug("Unable to open file {}: {!s}".format(path, exc))
+        except Exception as exc:
+            logger.error("Parsing of file {} failed: {!s}".format(path, exc), exc_info=exc)
+            monitor.incr_failed_files_counter()
 
-        remaining_files_count -= 1
-        monitor.unprocessed_files_gauge.set(remaining_files_count)
+            if failed_path is not None:
+                failed_path.mkdir(parents=True, exist_ok=True)
+                path.replace(failed_path.joinpath(path.name))
+
+        else:
+            monitor.successfully_processed_files_gauge.inc()
+            monitor.count_of_time_series_gauge.set(time_series_count)
+
+            if len(thread_queue) >= 20:
+                post_all_data(thread_queue, monitor)
+                thread_queue.clear()
+
+        monitor.unprocessed_files_gauge.dec()
         monitor.push()
-    print("toptal time taken...", time.time() - st)
+
+    if thread_queue:
+        post_all_data(thread_queue, monitor)
+        monitor.push()
+
+    logger.info("Total time to process batch of files: {:.2f} seconds".format(time.time() - start_time))
 
 
-def find_files_in_path(folder_path, after_timestamp: int, newest_first: bool = True):
-    """Return csv files in 'folder_path' sorted by 'newest_first' on last modified timestamp of files."""
+def find_files_in_path(folder_path, after_timestamp: int):
+    """Return csv files in 'folder_path' sorted by newest first on last modified timestamp of files."""
     before_timestamp = int(time.time() - 2)  # Only process files older than 2 seconds
     all_relevant_paths = []
 
@@ -233,4 +235,4 @@ def find_files_in_path(folder_path, after_timestamp: int, newest_first: bool = T
         if after_timestamp < modified_timestamp < before_timestamp:
             all_relevant_paths.append((path, modified_timestamp))
 
-    return [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=newest_first)]
+    return [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=True)]

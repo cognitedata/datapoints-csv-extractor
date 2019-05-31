@@ -36,6 +36,7 @@ def _parse_cli_args():
     parser.add_argument("--input", "-i", required=True, help="Folder path of the files to process")
     parser.add_argument("--timestamp", "-t", required=False, type=int, help="Optional, process files older than this")
     parser.add_argument("--log", "-d", required=False, default="log", help="Optional, log directory")
+    parser.add_argument("--log-level", required=False, default="INFO", help="Optional, logging level")
     parser.add_argument(
         "--move-failed",
         "-m",
@@ -47,13 +48,13 @@ def _parse_cli_args():
     return parser.parse_args()
 
 
-def _configure_logger(folder_path, live_processing: bool) -> None:
+def _configure_logger(folder_path, live_processing: bool, log_level: str) -> None:
     """Create 'folder_path' and configure logging to file as well as console."""
     name_postfix = "live" if live_processing else "historical"
     folder_path.mkdir(parents=True, exist_ok=True)
     log_file = folder_path.joinpath("extractor-{}.log".format(name_postfix))
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.INFO if log_level == "INFO" else log_level,
         format="%(asctime)s %(name)s %(levelname)s - %(message)s",
         handlers=[
             TimedRotatingFileHandler(log_file, when="midnight", backupCount=7),
@@ -66,7 +67,7 @@ def _configure_logger(folder_path, live_processing: bool) -> None:
 
 
 def main(args):
-    _configure_logger(Path(args.log), args.live)
+    _configure_logger(Path(args.log), args.live, args.log_level)
 
     api_key = args.api_key if args.api_key else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
     args.api_key = ""  # Don't log the api key if given through CLI
@@ -87,7 +88,7 @@ def main(args):
         client = CogniteClient(api_key=api_key)
 
     project_name = client._project
-    monitor = configure_prometheus(args.live, project_name) 
+    monitor = configure_prometheus(args.live, project_name)
 
     try:
         extract_data_points(
