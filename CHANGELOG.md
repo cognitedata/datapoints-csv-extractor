@@ -12,9 +12,10 @@ Changes are grouped as follows
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
-## Unpublished
+## [0.2.0] - Unpublished
 ### Added
 - Command line argument for specifying if we should move finished files to subfolder
+- Process reading files in parallel with aiofiles
 
 ### Changed
 - Upgraded dependencis of Cognite sdk and gcloud logger

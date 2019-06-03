@@ -5,6 +5,7 @@ A script that process csv files in a specified folder,
 to extract data points to send to CDP.
 """
 import argparse
+import asyncio
 import logging
 import os
 import sys
@@ -38,10 +39,7 @@ def _parse_cli_args():
     parser.add_argument("--log", "-d", required=False, default="log", help="Optional, log directory")
     parser.add_argument("--log-level", required=False, default="INFO", help="Optional, logging level")
     parser.add_argument(
-        "--move-failed",
-        required=False,
-        action="store_true",
-        help="Optional, move failed csv files to subfolder failed",
+        "--move-failed", required=False, action="store_true", help="Optional, move failed csv files to subfolder failed"
     )
     parser.add_argument(
         "--keep-finished",
@@ -97,12 +95,13 @@ def main(args):
         logger.error("Failed to create CDP client: {!s}".format(exc))
         client = CogniteClient(api_key=api_key)
 
-    project_name = client._project
-    monitor = configure_prometheus(args.live, project_name)
+    monitor = configure_prometheus(args.live, client._project)
 
     try:
-        extract_data_points(
-            client, monitor, get_all_time_series(client), args.live, input_path, failed_path, finished_path
+        asyncio.run(
+            extract_data_points(
+                client, monitor, get_all_time_series(client), args.live, input_path, failed_path, finished_path
+            )
         )
     except KeyboardInterrupt:
         logger.warning("Extractor stopped")
