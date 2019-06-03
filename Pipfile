@@ -4,10 +4,10 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [packages]
-cognite-sdk = "==0.13.2"
+cognite-sdk = "==0.13.5"
 cognite-logger = "==0.4.*"
 cognite-prometheus = "==0.1.6"
-google-cloud-logging = "==1.10.0"
+google-cloud-logging = "==1.11.0"
 
 [dev-packages]
 isort = "*"

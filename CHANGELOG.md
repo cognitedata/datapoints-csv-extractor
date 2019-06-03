@@ -12,6 +12,10 @@ Changes are grouped as follows
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## Unpublished
+### Changed
+- Upgraded dependencis of Cognite sdk and gcloud logger
+
 ## [0.1.5] - 2019-05-29
 ### Added
 - Command line argument for setting log level
