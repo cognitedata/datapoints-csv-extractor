@@ -18,6 +18,7 @@ Changes are grouped as follows
 
 ### Changed
 - Historical also works on newest files first
+- Larger pool threads of requests to send to CDF
 
 ### Fixed
 - Timestamps are in milliseconds again
