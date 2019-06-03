@@ -22,16 +22,14 @@ logger = logging.getLogger(__name__)
 BATCH_MAX = 1000  # Maximum number of time series batched at once
 
 
-def extract_data_points(
-    client, monitor, time_series_cache, live_mode: bool, start_timestamp: int, folder_path, failed_path
-):
+def extract_data_points(client, monitor, time_series_cache, live_mode: bool, folder_path, failed_path, finished_path):
     """Find and publish all data points in files found in 'folder_path'.
 
     In `live_mode` will process only 20 newest files, and the search for new files again.
     If not live mode, it will start with oldest files first, and process all then quit.
     """
     while True:
-        files = find_files_in_path(folder_path, start_timestamp)
+        files = find_files_in_path(folder_path)
 
         logger.info("Found {} relevant files to process in {}".format(len(files), folder_path))
         monitor.available_csv_files_gauge.set(len(files))
@@ -39,10 +37,10 @@ def extract_data_points(
 
         if files:
             files = files[:20] if live_mode else files  # We only process 20 newest before we look again for live
-            process_files(client, monitor, files, time_series_cache, failed_path)
+            process_files(client, monitor, files, time_series_cache, failed_path, finished_path)
 
         if live_mode:
-            time.sleep(2)
+            time.sleep(8)
         else:
             logger.info("Extraction complete")
             break
@@ -162,7 +160,7 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
     return network_threads, count_of_data_points, len(unique_external_ids)
 
 
-def post_all_data(queue, monitor):
+def post_all_data(queue, monitor, finished_path):
     start_time = time.time()
 
     all_threads = list(chain(*map(itemgetter(0), queue)))
@@ -173,7 +171,10 @@ def post_all_data(queue, monitor):
 
     for path in map(itemgetter(1), queue):
         try:
-            path.unlink()
+            if finished_path is None:
+                path.unlink()
+            else:
+                path.replace(finished_path.joinpath(path.name))
         except IOError as exc:
             logger.debug("Unable to delete file {}: {!s}".format(path, exc))
 
@@ -182,8 +183,8 @@ def post_all_data(queue, monitor):
     logger.info("Total time to send batch of request: {:.2f} seconds".format(time.time() - start_time))
 
 
-def process_files(client, monitor, paths, time_series_cache, failed_path) -> None:
-    """Process one csv file at a time, and either delete it or possibly move it when done."""
+def process_files(client, monitor, paths, time_series_cache, failed_path, finished_path) -> None:
+    """Process one csv file at a time, and either delete it or move it when done."""
     monitor.successfully_processed_files_gauge.set(0)
     monitor.unprocessed_files_gauge.set(len(paths))
     thread_queue = []
@@ -200,7 +201,6 @@ def process_files(client, monitor, paths, time_series_cache, failed_path) -> Non
             monitor.incr_failed_files_counter()
 
             if failed_path is not None:
-                failed_path.mkdir(parents=True, exist_ok=True)
                 path.replace(failed_path.joinpath(path.name))
 
         else:
@@ -208,22 +208,22 @@ def process_files(client, monitor, paths, time_series_cache, failed_path) -> Non
             monitor.count_of_time_series_gauge.set(time_series_count)
 
             if len(thread_queue) >= 20:
-                post_all_data(thread_queue, monitor)
+                post_all_data(thread_queue, monitor, finished_path)
                 thread_queue.clear()
 
         monitor.unprocessed_files_gauge.dec()
         monitor.push()
 
     if thread_queue:
-        post_all_data(thread_queue, monitor)
+        post_all_data(thread_queue, monitor, finished_path)
         monitor.push()
 
-    logger.info("Total time to process batch of files: {:.2f} seconds".format(time.time() - start_time))
+    logger.info("Total time to process {} of files: {:.2f} seconds".format(len(paths), time.time() - start_time))
 
 
-def find_files_in_path(folder_path, after_timestamp: int):
+def find_files_in_path(folder_path):
     """Return csv files in 'folder_path' sorted by newest first on last modified timestamp of files."""
-    before_timestamp = int(time.time() - 2)  # Only process files older than 2 seconds
+    before_timestamp = time.time() - 1.0  # Only process files older than 1 seconds
     all_relevant_paths = []
 
     for path in folder_path.glob("*.csv"):
@@ -232,7 +232,7 @@ def find_files_in_path(folder_path, after_timestamp: int):
         except IOError as exc:  # Possible that file no longer exists, multiple extractors
             logger.debug("Failed to find stats on file {!s}: {!s}".format(path, exc))
             continue
-        if after_timestamp < modified_timestamp < before_timestamp:
+        if modified_timestamp < before_timestamp:
             all_relevant_paths.append((path, modified_timestamp))
 
     return [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=True)]

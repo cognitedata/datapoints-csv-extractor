@@ -33,18 +33,23 @@ def _parse_cli_args():
     group.add_argument(
         "--historical", default=True, action="store_true", help="Process historical data instead of live"
     )
+    parser.add_argument("--api-key", "-k", required=False, help="Optional, CDP API KEY")
     parser.add_argument("--input", "-i", required=True, help="Folder path of the files to process")
-    parser.add_argument("--timestamp", "-t", required=False, type=int, help="Optional, process files older than this")
     parser.add_argument("--log", "-d", required=False, default="log", help="Optional, log directory")
     parser.add_argument("--log-level", required=False, default="INFO", help="Optional, logging level")
     parser.add_argument(
         "--move-failed",
-        "-m",
         required=False,
         action="store_true",
         help="Optional, move failed csv files to subfolder failed",
     )
-    parser.add_argument("--api-key", "-k", required=False, help="Optional, CDP API KEY")
+    parser.add_argument(
+        "--keep-finished",
+        required=False,
+        action="store_true",
+        help="Optional, move successful csv files to subfolder finished",
+    )
+
     return parser.parse_args()
 
 
@@ -72,13 +77,18 @@ def main(args):
     api_key = args.api_key if args.api_key else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
     args.api_key = ""  # Don't log the api key if given through CLI
     logger.info("Extractor configured with {}".format(args))
-    start_timestamp = args.timestamp if args.timestamp else 0
 
     input_path = Path(args.input)
     if not input_path.exists():
         logger.fatal("Input folder does not exists: {!s}".format(input_path))
         sys.exit(2)
+
     failed_path = input_path.joinpath("failed") if args.move_failed else None
+    finished_path = input_path.joinpath("finished") if args.keep_finished else None
+    if failed_path:
+        failed_path.mkdir(parents=True, exist_ok=True)
+    if finished_path:
+        finished_path.mkdir(parents=True, exist_ok=True)
 
     try:
         client = CogniteClient(api_key=api_key)
@@ -92,7 +102,7 @@ def main(args):
 
     try:
         extract_data_points(
-            client, monitor, get_all_time_series(client), args.live, start_timestamp, input_path, failed_path
+            client, monitor, get_all_time_series(client), args.live, input_path, failed_path, finished_path
         )
     except KeyboardInterrupt:
         logger.warning("Extractor stopped")

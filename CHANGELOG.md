@@ -13,8 +13,15 @@ Changes are grouped as follows
 - `Security` in case of vulnerabilities.
 
 ## Unpublished
+### Added
+- Command line argument for specifying if we should move finished files to subfolder
+
 ### Changed
 - Upgraded dependencis of Cognite sdk and gcloud logger
+- Check for new files every 8 seconds in live mode
+
+### Removed
+- Removed timestamp command line argument
 
 ## [0.1.5] - 2019-05-29
 ### Added
