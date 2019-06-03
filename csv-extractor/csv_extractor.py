@@ -117,21 +117,31 @@ async def process_one_file(path, client, time_series_cache, monitor, failed_path
     try:
         content = await read_and_parse_csv_file(path)
 
+        logger.info("Time to read file {}: {:.2f} seconds".format(path, time.time() - start_time))
+        start_time = time.time()
+
         data_points, new_time_series, data_points_count, time_series_count = convert_file_content_to_data_points(
             content, time_series_cache
         )
+
+        logger.info("Time to parse file {}: {:.2f} seconds".format(path, time.time() - start_time))
+        start_time = time.time()
+
         if new_time_series:
             _log_error(client.time_series.post_time_series, new_time_series)
             monitor.incr_created_time_series_counter(len(new_time_series))
 
         _log_error(client.datapoints.post_multi_time_series_datapoints, data_points)
 
+        logger.info("Time to send datapoints {}: {:.2f} seconds".format(path, time.time() - start_time))
+        start_time = time.time()
+
         if finished_path is None:
             await aiofiles.os.remove(path)
         else:
             await aiofiles.os.rename(path, finished_path.joinpath(path.name))
 
-        logger.info("Time to process file {}: {:.2f} seconds".format(path, time.time() - start_time))
+        logger.info("Time to move/delete file {}: {:.2f} seconds".format(path, time.time() - start_time))
 
     except IOError as exc:
         logger.debug("Unable to open or delete file {}: {!s}".format(path, exc))
@@ -171,7 +181,7 @@ def convert_file_content_to_data_points(content, existing_time_series):
     count_of_data_points = 0
 
     for col_name, values in content.items():
-        name, _, external_id = col_name.rpartition(":")
+        external_id, _, name = col_name.rpartition(":")
         name, external_id = name.strip(), external_id.strip()
 
         if external_id not in existing_time_series:
