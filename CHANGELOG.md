@@ -12,7 +12,7 @@ Changes are grouped as follows
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
-## Unpublished
+## [0.2.0] - 2019-06-28
 ### Added
 - Command line argument for specifying if we should move finished files to subfolder
 
