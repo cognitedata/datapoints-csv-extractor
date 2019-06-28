@@ -38,10 +38,7 @@ def _parse_cli_args():
     parser.add_argument("--log", "-d", required=False, default="log", help="Optional, log directory")
     parser.add_argument("--log-level", required=False, default="INFO", help="Optional, logging level")
     parser.add_argument(
-        "--move-failed",
-        required=False,
-        action="store_true",
-        help="Optional, move failed csv files to subfolder failed",
+        "--move-failed", required=False, action="store_true", help="Optional, move failed csv files to subfolder failed"
     )
     parser.add_argument(
         "--keep-finished",
@@ -49,6 +46,8 @@ def _parse_cli_args():
         action="store_true",
         help="Optional, move successful csv files to subfolder finished",
     )
+    parser.add_argument("--from-time", required=False, type=int, help="Optional, only process if older")
+    parser.add_argument("--until-time", required=False, type=int, help="Optional, only process if younger")
 
     return parser.parse_args()
 
@@ -69,6 +68,12 @@ def _configure_logger(folder_path, live_processing: bool, log_level: str) -> Non
 
     if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):  # Temp hack
         google.cloud.logging.Client().setup_logging(name="csv-extractor-{}".format(name_postfix))
+
+
+def _convert_timestamp_maybe(timestamp_str):
+    if timestamp_str:
+        return
+    return
 
 
 def main(args):
@@ -102,7 +107,15 @@ def main(args):
 
     try:
         extract_data_points(
-            client, monitor, get_all_time_series(client), args.live, input_path, failed_path, finished_path
+            client,
+            monitor,
+            get_all_time_series(client),
+            args.live,
+            args.from_time,
+            args.until_time,
+            input_path,
+            failed_path,
+            finished_path,
         )
     except KeyboardInterrupt:
         logger.warning("Extractor stopped")

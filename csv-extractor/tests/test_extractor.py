@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pandas
 
-from csv_extractor import create_data_points, find_files_in_path
+from csv_extractor import create_data_points, find_historical_files_in_path
 
 
 class TestExtractor:
     folder_path = Path(__file__).parent / "test_files"
 
     def test_find_files_in_path_historical(self):
-        result = find_files_in_path(Path(self.folder_path), 0)
+        result = find_historical_files_in_path(Path(self.folder_path), None, None)
         assert len(result), len(os.listdir(self.folder_path))
 
     def test_create_datapoints(self):

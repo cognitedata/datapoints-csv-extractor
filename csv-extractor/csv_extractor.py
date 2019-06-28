@@ -10,6 +10,7 @@ import time
 from collections import defaultdict
 from itertools import chain
 from operator import itemgetter
+from random import shuffle
 from typing import Dict
 
 from cognite.client import APIError
@@ -22,21 +23,25 @@ logger = logging.getLogger(__name__)
 BATCH_MAX = 1000  # Maximum number of time series batched at once
 
 
-def extract_data_points(client, monitor, time_series_cache, live_mode: bool, folder_path, failed_path, finished_path):
+def extract_data_points(
+    client, monitor, time_series_cache, live_mode: bool, time_from, time_until, folder_path, failed_path, finished_path
+):
     """Find and publish all data points in files found in 'folder_path'.
 
     In `live_mode` will process only 20 newest files, and the search for new files again.
     If not live mode, it will start with oldest files first, and process all then quit.
     """
     while True:
-        files = find_files_in_path(folder_path)
+        if live_mode:
+            files = find_live_files_in_path(folder_path)
+        else:
+            files = find_historical_files_in_path(folder_path, time_from, time_until)
 
         logger.info("Found {} relevant files to process in {}".format(len(files), folder_path))
         monitor.available_csv_files_gauge.set(len(files))
         monitor.push()
 
         if files:
-            files = files[:20] if live_mode else files  # We only process 20 newest before we look again for live
             process_files(client, monitor, files, time_series_cache, failed_path, finished_path)
 
         if live_mode:
@@ -221,8 +226,29 @@ def process_files(client, monitor, paths, time_series_cache, failed_path, finish
     logger.info("Total time to process {} of files: {:.2f} seconds".format(len(paths), time.time() - start_time))
 
 
-def find_files_in_path(folder_path):
-    """Return csv files in 'folder_path' sorted by newest first on last modified timestamp of files."""
+def find_historical_files_in_path(folder_path, time_from, time_until):
+    all_paths = list(folder_path.glob("*.csv"))
+
+    if time_from or time_until:
+        all_relevant_paths = []
+        for path in all_paths:
+            filename_parts = path.stem.split("_")
+            if len(filename_parts) > 2:
+                try:
+                    timestamp = int(filename_parts[-1])
+                except ValueError as exc:
+                    logger.warning("Failed to find timestamp in {}, skipping! {!s}".format(path.name, exc))
+                else:
+                    if (not time_from or time_from < timestamp) and (not time_until or timestamp < time_until):
+                        all_relevant_paths.append(path)
+        all_paths = all_relevant_paths
+
+    shuffle(all_paths)
+    return all_paths
+
+
+def find_live_files_in_path(folder_path):
+    """Return max 20 csv files in 'folder_path' sorted by newest first on last modified timestamp of files."""
     before_timestamp = time.time() - 1.0  # Only process files older than 1 seconds
     all_relevant_paths = []
 
@@ -235,4 +261,5 @@ def find_files_in_path(folder_path):
         if modified_timestamp < before_timestamp:
             all_relevant_paths.append((path, modified_timestamp))
 
-    return [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=True)]
+    # We only process 20 newest before we look again for live
+    return [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=True)][:20]
