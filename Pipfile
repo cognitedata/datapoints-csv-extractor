@@ -4,7 +4,7 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [packages]
-cognite-sdk = "==0.13.*"
+cognite-sdk = "==1.0"
 cognite-logger = "==0.4.*"
 cognite-prometheus = "==0.1.*"
 google-cloud-logging = "==1.11.*"

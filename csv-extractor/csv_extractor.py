@@ -13,9 +13,9 @@ from operator import itemgetter
 from random import shuffle
 from typing import Dict
 
-from cognite.client import APIError
-from cognite.client.stable.datapoints import Datapoint, TimeseriesWithDatapoints
-from cognite.client.stable.time_series import TimeSeries
+from cognite.client.exceptions import CogniteAPIError
+from cognite.client.data_classes.datapoints import Datapoint
+from cognite.client.data_classes.time_series import TimeSeries
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +55,8 @@ def get_all_time_series(client):
     """Return map of time series externalId -> name of all time series that has externalId."""
     for i in range(10):
         try:
-            res = client.time_series.get_time_series(include_metadata=True, autopaging=True)
-        except APIError as exc:
+            res = client.time_series.list(include_metadata=True, limit=-1)
+        except CogniteAPIError as exc:
             logger.error("Failed to get timeseries: {!s}".format(exc))
             time.sleep(i)
         else:
@@ -66,9 +66,9 @@ def get_all_time_series(client):
         sys.exit(1)
 
     return {
-        i["metadata"]["externalID"]: i["name"]
-        for i in res.to_json()
-        if "metadata" in i and "externalID" in i["metadata"]
+        r.external_id: r.name
+        for r in res
+        # if "metadata" in i and "externalID" in i["metadata"]
     }
 
 
@@ -81,7 +81,8 @@ def _log_error(func, *args, **vargs):
 
 
 def create_data_points(values, timestamps):
-    """Return CDP Datapoint object for 'values' and 'timestamps'."""
+    """Return CDP Datapoint object for 'values' and 'timestamps'.
+    v2: return list of tuples, because next function gets that format"""
     data_points = []
 
     for i, value_string in enumerate(values):
@@ -91,17 +92,17 @@ def create_data_points(values, timestamps):
             except ValueError as error:
                 logger.info(error)
                 continue
-            data_points.append(Datapoint(timestamp=int(timestamps[i]) * 1000, value=value))
-
+            # data_points.append(Datapoint(timestamp=int(timestamps[i]) * 1000, value=value))
+            data_points.append((int(timestamps[i]) * 1000, value))
     return data_points
 
 
 def create_time_series(client, name: str, external_id: str) -> None:
     """Create a new time series when the 'external_id' isn't found."""
     new_time_series = TimeSeries(
-        name=name, description="Auto-generated time series, external ID not found", metadata={"externalID": external_id}
+        name=name, description="Auto-generated time series, external ID not found", external_id=external_id
     )
-    _log_error(client.time_series.post_time_series, [new_time_series])
+    _log_error(client.time_series.create, new_time_series)  # error here !!!
 
 
 def get_parsed_file(path) -> Dict[str, list]:
@@ -131,7 +132,7 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
             network_threads.append(
                 threading.Thread(
                     target=_log_error,
-                    args=(client.datapoints.post_multi_time_series_datapoints, current_time_series[:]),
+                    args=(client.datapoints.insert_multiple, current_time_series),
                 )
             )
 
@@ -147,16 +148,15 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
 
         data_points = create_data_points(v[1:], timestamps)
         if data_points:
-            current_time_series.append(
-                TimeseriesWithDatapoints(name=existing_time_series[external_id], datapoints=data_points)
-            )
+            current_time_series.append({"externalId": external_id, "datapoints": data_points})
+            # TimeseriesWithDatapoints(name=existing_time_series[external_id], datapoints=data_points)
             count_of_data_points += len(data_points)
             unique_external_ids.add(external_id)
 
     if current_time_series:
         network_threads.append(
             threading.Thread(
-                target=_log_error, args=(client.datapoints.post_multi_time_series_datapoints, current_time_series)
+                target=_log_error, args=(client.datapoints.insert_multiple, current_time_series)
             )
         )
 
