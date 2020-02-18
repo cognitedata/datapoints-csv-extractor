@@ -1,6 +1,6 @@
 FROM python:3.7
 
-MAINTAINER oleksandr.kozhevnykov@cognite.com
+MAINTAINER patrick.mishima@cognite.com
 
 WORKDIR /usr/src/app
 COPY Pipfile Pipfile.lock ./

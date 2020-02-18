@@ -94,7 +94,7 @@ def main(args):
         finished_path.mkdir(parents=True, exist_ok=True)
 
     try:
-        client = CogniteClient(api_key=api_key, client_name='auto_script')
+        client = CogniteClient(api_key=api_key, client_name='tebis-csv-datapoint-extractor')
         client.login.status()
     except CogniteAPIError as exc:
         logger.error("Failed to create CDP client: {!s}".format(exc))

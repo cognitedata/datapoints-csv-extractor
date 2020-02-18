@@ -63,5 +63,5 @@ Feel free to open [issues](https://github.com/cognitedata/datapoints-csv-extract
 ## Tests
 Follow command will run unit tests and generate coverage report:
 ```
-pipenv run pytest --cov=csv-extractor
+pipenv run pytest
 ```

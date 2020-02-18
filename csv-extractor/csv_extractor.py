@@ -14,7 +14,6 @@ from random import shuffle
 from typing import Dict
 
 from cognite.client.exceptions import CogniteAPIError
-from cognite.client.data_classes.datapoints import Datapoint
 from cognite.client.data_classes.time_series import TimeSeries
 
 logger = logging.getLogger(__name__)
@@ -66,9 +65,8 @@ def get_all_time_series(client):
         sys.exit(1)
 
     return {
-        r.external_id: r.name
+        r.external_id: r.name  # expected any time-series has external ID (not in metadata)
         for r in res
-        # if "metadata" in i and "externalID" in i["metadata"]
     }
 
 
@@ -81,8 +79,7 @@ def _log_error(func, *args, **vargs):
 
 
 def create_data_points(values, timestamps):
-    """Return CDP Datapoint object for 'values' and 'timestamps'.
-    v2: return list of tuples, because next function gets that format"""
+    """Return list of tuples (ts, value), because next function gets that format, not Datapoint"""
     data_points = []
 
     for i, value_string in enumerate(values):
@@ -92,7 +89,6 @@ def create_data_points(values, timestamps):
             except ValueError as error:
                 logger.info(error)
                 continue
-            # data_points.append(Datapoint(timestamp=int(timestamps[i]) * 1000, value=value))
             data_points.append((int(timestamps[i]) * 1000, value))
     return data_points
 
@@ -149,7 +145,6 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
         data_points = create_data_points(v[1:], timestamps)
         if data_points:
             current_time_series.append({"externalId": external_id, "datapoints": data_points})
-            # TimeseriesWithDatapoints(name=existing_time_series[external_id], datapoints=data_points)
             count_of_data_points += len(data_points)
             unique_external_ids.add(external_id)
 
