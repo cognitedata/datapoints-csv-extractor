@@ -79,6 +79,7 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+how to show w-dea.ipynb
 
 # pyenv
 .python-version
