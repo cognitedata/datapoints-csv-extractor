@@ -25,9 +25,12 @@ def _parse_cli_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--live", "-l", action="store_true",
-                       help="By default, historical data will be processed. Use '--live' to process live data",
-                       )
+    group.add_argument(
+        "--live",
+        "-l",
+        action="store_true",
+        help="By default, historical data will be processed. Use '--live' to process live data",
+    )
     group.add_argument(
         "--historical", default=True, action="store_true", help="Process historical data instead of live"
     )
@@ -94,7 +97,7 @@ def main(args):
         finished_path.mkdir(parents=True, exist_ok=True)
 
     try:
-        client = CogniteClient(api_key=api_key, client_name='tebis-csv-datapoint-extractor')
+        client = CogniteClient(api_key=api_key, client_name="tebis-csv-datapoint-extractor")
         client.login.status()
     except CogniteAPIError as exc:
         logger.error("Failed to create CDP client: {!s}".format(exc))

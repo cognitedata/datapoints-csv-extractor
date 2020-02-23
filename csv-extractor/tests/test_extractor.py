@@ -11,7 +11,7 @@ from csv_extractor import create_data_points, find_historical_files_in_path
 
 
 class TestExtractor:
-    folder_path = Path(__file__).parent / "test_files" # folder with input data
+    folder_path = Path(__file__).parent / "test_files"  # folder with input data
 
     def test_find_files_in_path_historical(self):
         result = find_historical_files_in_path(Path(self.folder_path), None, None)
