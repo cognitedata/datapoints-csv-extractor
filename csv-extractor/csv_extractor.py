@@ -64,10 +64,7 @@ def get_all_time_series(client):
         logger.fatal("Could not fetch time series data from CDP, exiting!")
         sys.exit(1)
 
-    return {
-        r.external_id: r.name  # expected any time-series has external ID (not in metadata)
-        for r in res
-    }
+    return {r.external_id: r.name for r in res}  # expected any time-series has external ID (not in metadata)
 
 
 def _log_error(func, *args, **vargs):
@@ -126,10 +123,7 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
     for col_name, v in parsed_file.items():
         if len(current_time_series) >= 1000:
             network_threads.append(
-                threading.Thread(
-                    target=_log_error,
-                    args=(client.datapoints.insert_multiple, current_time_series),
-                )
+                threading.Thread(target=_log_error, args=(client.datapoints.insert_multiple, current_time_series))
             )
 
             current_time_series.clear()
@@ -150,9 +144,7 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
 
     if current_time_series:
         network_threads.append(
-            threading.Thread(
-                target=_log_error, args=(client.datapoints.insert_multiple, current_time_series)
-            )
+            threading.Thread(target=_log_error, args=(client.datapoints.insert_multiple, current_time_series))
         )
 
     logger.info("Time to process file {}: {:.2f} seconds".format(csv_path, time.time() - start_time))
