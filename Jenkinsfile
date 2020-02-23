@@ -78,7 +78,7 @@ podTemplate(
 
         container('docker') {
             def buildImage = "datapoints-csv-extractor:${gitCommit}"
-            def currentVersion = sh(returnStdout: true, script: 'sed -n -e "/^__version__/p" csv_extractor/__init__.py | cut -d\\" -f2').trim()
+            def currentVersion = sh(returnStdout: true, script: 'sed -n -e "/^__version__/p" csv-extractor/__init__.py | cut -d\\" -f2').trim()
 
             stage('Build docker image') {
                 sh("docker build -t ${buildImage} .")
