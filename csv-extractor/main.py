@@ -32,26 +32,14 @@ def _parse_cli_args():
         help="By default, historical data will be processed. Use '--live' to process live data",
     )
     group.add_argument(
-        "--historical",
-        default=True,
-        action="store_true",
-        help="Process historical data instead of live",
+        "--historical", default=True, action="store_true", help="Process historical data instead of live"
     )
     parser.add_argument("--api-key", "-k", required=False, help="Optional, CDP API KEY")
+    parser.add_argument("--input", "-i", required=True, help="Folder path of the files to process")
+    parser.add_argument("--log", "-d", required=False, default="log", help="Optional, log directory")
+    parser.add_argument("--log-level", required=False, default="INFO", help="Optional, logging level")
     parser.add_argument(
-        "--input", "-i", required=True, help="Folder path of the files to process"
-    )
-    parser.add_argument(
-        "--log", "-d", required=False, default="log", help="Optional, log directory"
-    )
-    parser.add_argument(
-        "--log-level", required=False, default="INFO", help="Optional, logging level"
-    )
-    parser.add_argument(
-        "--move-failed",
-        required=False,
-        action="store_true",
-        help="Optional, move failed csv files to subfolder failed",
+        "--move-failed", required=False, action="store_true", help="Optional, move failed csv files to subfolder failed"
     )
     parser.add_argument(
         "--keep-finished",
@@ -59,15 +47,8 @@ def _parse_cli_args():
         action="store_true",
         help="Optional, move successful csv files to subfolder finished",
     )
-    parser.add_argument(
-        "--from-time", required=False, type=int, help="Optional, only process if older"
-    )
-    parser.add_argument(
-        "--until-time",
-        required=False,
-        type=int,
-        help="Optional, only process if younger",
-    )
+    parser.add_argument("--from-time", required=False, type=int, help="Optional, only process if older")
+    parser.add_argument("--until-time", required=False, type=int, help="Optional, only process if younger")
 
     return parser.parse_args()
 
@@ -87,9 +68,7 @@ def _configure_logger(folder_path, live_processing: bool, log_level: str) -> Non
     )
 
     if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):  # Temp hack
-        google.cloud.logging.Client().setup_logging(
-            name="csv-extractor-{}".format(name_postfix)
-        )
+        google.cloud.logging.Client().setup_logging(name="csv-extractor-{}".format(name_postfix))
 
 
 def _convert_timestamp_maybe(timestamp_str):
@@ -101,9 +80,7 @@ def _convert_timestamp_maybe(timestamp_str):
 def main(args):
     _configure_logger(Path(args.log), args.live, args.log_level)
 
-    api_key = (
-        args.api_key if args.api_key else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
-    )
+    api_key = args.api_key if args.api_key else os.environ.get("COGNITE_EXTRACTOR_API_KEY")
     args.api_key = ""  # Don't log the api key if given through CLI
     logger.info("Extractor configured with {}".format(args))
 
@@ -120,9 +97,7 @@ def main(args):
         finished_path.mkdir(parents=True, exist_ok=True)
 
     try:
-        client = CogniteClient(
-            api_key=api_key, client_name="tebis-csv-datapoint-extractor"
-        )
+        client = CogniteClient(api_key=api_key, client_name="tebis-csv-datapoint-extractor")
         client.login.status()
     except CogniteAPIError as exc:
         logger.error("Failed to create CDP client: {!s}".format(exc))
