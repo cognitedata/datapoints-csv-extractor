@@ -13,8 +13,8 @@ from operator import itemgetter
 from random import shuffle
 from typing import Dict
 
-from cognite.client.exceptions import CogniteAPIError
 from cognite.client.data_classes.time_series import TimeSeries
+from cognite.client.exceptions import CogniteAPIError
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +123,9 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
     for col_name, v in parsed_file.items():
         if len(current_time_series) >= 1000:
             network_threads.append(
-                threading.Thread(target=_log_error,
-                                 args=(client.datapoints.insert_multiple, current_time_series.copy()))
+                threading.Thread(
+                    target=_log_error, args=(client.datapoints.insert_multiple, current_time_series.copy())
+                )
             )  # make copy of time_series to use in Treads safely
 
             current_time_series.clear()
