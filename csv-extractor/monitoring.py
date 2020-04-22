@@ -25,9 +25,7 @@ def configure_prometheus(live: bool, project_name):
         unconfigured_dummy = False
 
     try:
-        CognitePrometheus(
-            jobname, username, password, unconfigured_dummy=unconfigured_dummy
-        )
+        CognitePrometheus(jobname, username, password, unconfigured_dummy=unconfigured_dummy)
     except Exception as exc:
         logger.error("Failed to create Prometheus object: {!s}".format(exc))
     return Prometheus(CognitePrometheus.get_prometheus_object(), live, project_name)
@@ -43,34 +41,21 @@ class Prometheus:
         self.label_values = {self.project_name}
         self.registry = CognitePrometheus.registry if registry is None else registry
 
-        self.info = Info(
-            "host",
-            "Host info",
-            namespace=self.namespace,
-            registry=CognitePrometheus.registry,
-        )
+        self.info = Info("host", "Host info", namespace=self.namespace, registry=CognitePrometheus.registry)
         self.info.info({"hostname": socket.gethostname(), "fqdn": socket.getfqdn()})
-        self.process = ProcessCollector(
-            namespace=self.namespace, registry=CognitePrometheus.registry
-        )
+        self.process = ProcessCollector(namespace=self.namespace, registry=CognitePrometheus.registry)
         self.platform = PlatformCollector(registry=CognitePrometheus.registry)
 
         self.created_time_series_counter = self._create_metric(
-            Counter,
-            "created_time_series_total",
-            "Number of time series created since the extractor started running",
+            Counter, "created_time_series_total", "Number of time series created since the extractor started running"
         )
 
         self.all_data_points_counter = self._create_metric(
-            Counter,
-            "posted_data_points_total",
-            "Number of datapoints posted since the extractor started running",
+            Counter, "posted_data_points_total", "Number of datapoints posted since the extractor started running"
         )
 
         self.count_of_time_series_gauge = self._create_metric(
-            Gauge,
-            "posted_time_series_count",
-            "Number of timeseries that had valid datapoints in the current file",
+            Gauge, "posted_time_series_count", "Number of timeseries that had valid datapoints in the current file"
         )
 
         self.processing_failed_counter = self._create_metric(
@@ -80,15 +65,11 @@ class Prometheus:
         )
 
         self.available_csv_files_gauge = self._create_metric(
-            Gauge,
-            "available_csv_files",
-            "Number of csv files in the folder that could be processed by the extractor",
+            Gauge, "available_csv_files", "Number of csv files in the folder that could be processed by the extractor"
         )
 
         self.unprocessed_files_gauge = self._create_metric(
-            Gauge,
-            "unprocessed_files",
-            "Number of csv files that remains to be processed in this batch",
+            Gauge, "unprocessed_files", "Number of csv files that remains to be processed in this batch"
         )
 
         self.successfully_processed_files_gauge = self._create_metric(
@@ -100,11 +81,7 @@ class Prometheus:
     def _create_metric(self, metric_class, name, description):
         """Create a new metric of 'metric_class' with 'name' and 'description'."""
         return metric_class(
-            name,
-            description,
-            namespace=self.namespace,
-            labelnames=self.labels,
-            registry=self.registry,
+            name, description, namespace=self.namespace, labelnames=self.labels, registry=self.registry
         ).labels(*self.label_values)
 
     def incr_failed_files_counter(self, amount: int = 1) -> None:

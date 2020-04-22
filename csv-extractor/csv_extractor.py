@@ -23,15 +23,7 @@ BATCH_MAX = 1000  # Maximum number of time series batched at once
 
 
 def extract_data_points(
-    client,
-    monitor,
-    time_series_cache,
-    live_mode: bool,
-    time_from,
-    time_until,
-    folder_path,
-    failed_path,
-    finished_path,
+    client, monitor, time_series_cache, live_mode: bool, time_from, time_until, folder_path, failed_path, finished_path
 ):
     """Find and publish all data points in files found in 'folder_path'.
 
@@ -44,16 +36,12 @@ def extract_data_points(
         else:
             files = find_historical_files_in_path(folder_path, time_from, time_until)
 
-        logger.info(
-            "Found {} relevant files to process in {}".format(len(files), folder_path)
-        )
+        logger.info("Found {} relevant files to process in {}".format(len(files), folder_path))
         monitor.available_csv_files_gauge.set(len(files))
         monitor.push()
 
         if files:
-            process_files(
-                client, monitor, files, time_series_cache, failed_path, finished_path
-            )
+            process_files(client, monitor, files, time_series_cache, failed_path, finished_path)
 
         if live_mode:
             time.sleep(8)
@@ -76,9 +64,7 @@ def get_all_time_series(client):
         logger.fatal("Could not fetch time series data from CDP, exiting!")
         sys.exit(1)
 
-    return {
-        r.external_id: r.name for r in res
-    }  # expected any time-series has external ID (not in metadata)
+    return {r.external_id: r.name for r in res}  # expected any time-series has external ID (not in metadata)
 
 
 def _log_error(func, *args, **vargs):
@@ -88,18 +74,9 @@ def _log_error(func, *args, **vargs):
     except Exception as error:
         logger.info(error)
         try:
-            if (
-                vargs["failed_path"]
-                and not vargs["failed_path"].joinpath(vargs["csv_path"].name).exists()
-            ):
-                vargs["csv_path"].replace(
-                    vargs["failed_path"].joinpath(vargs["csv_path"].name)
-                )
-                logger.error(
-                    "File {!s} is replaced to failed folder".format(
-                        vargs["csv_path"].name
-                    )
-                )
+            if vargs["failed_path"] and not vargs["failed_path"].joinpath(vargs["csv_path"].name).exists():
+                vargs["csv_path"].replace(vargs["failed_path"].joinpath(vargs["csv_path"].name))
+                logger.error("File {!s} is replaced to failed folder".format(vargs["csv_path"].name))
         except Exception as error2:
             logger.error("Failed to replace file to failed folder: {!s}".format(error2))
 
@@ -122,9 +99,7 @@ def create_data_points(values, timestamps):
 def create_time_series(client, name: str, external_id: str) -> None:
     """Create a new time series when the 'external_id' isn't found."""
     new_time_series = TimeSeries(
-        name=name,
-        description="Auto-generated time series, external ID not found",
-        external_id=external_id,
+        name=name, description="Auto-generated time series, external ID not found", external_id=external_id
     )
     _log_error(client.time_series.create, new_time_series)
 
@@ -156,10 +131,7 @@ def process_csv_file(client, monitor, csv_path, existing_time_series, failed_pat
             network_threads.append(
                 threading.Thread(
                     target=_log_error,
-                    args=(
-                        client.datapoints.insert_multiple,
-                        current_time_series.copy(),
-                    ),
+                    args=(client.datapoints.insert_multiple, current_time_series.copy()),
                     kwargs={"csv_path": csv_path, "failed_path": failed_path},
                 )
             )
@@ -176,9 +148,7 @@ def process_csv_file(client, monitor, csv_path, existing_time_series, failed_pat
 
         data_points = create_data_points(v[1:], timestamps)
         if data_points:
-            current_time_series.append(
-                {"externalId": external_id, "datapoints": data_points}
-            )
+            current_time_series.append({"externalId": external_id, "datapoints": data_points})
             count_of_data_points += len(data_points)
             unique_external_ids.add(external_id)
 
@@ -191,11 +161,7 @@ def process_csv_file(client, monitor, csv_path, existing_time_series, failed_pat
             )
         )
 
-    logger.info(
-        "Time to process file {}: {:.2f} seconds".format(
-            csv_path, time.time() - start_time
-        )
-    )
+    logger.info("Time to process file {}: {:.2f} seconds".format(csv_path, time.time() - start_time))
 
     return network_threads, count_of_data_points, len(unique_external_ids)
 
@@ -221,16 +187,10 @@ def post_all_data(queue, monitor, finished_path):
 
     monitor.incr_total_data_points_counter(sum(map(itemgetter(2), queue)))
 
-    logger.info(
-        "Total time to send batch of request: {:.2f} seconds".format(
-            time.time() - start_time
-        )
-    )
+    logger.info("Total time to send batch of request: {:.2f} seconds".format(time.time() - start_time))
 
 
-def process_files(
-    client, monitor, paths, time_series_cache, failed_path, finished_path
-) -> None:
+def process_files(client, monitor, paths, time_series_cache, failed_path, finished_path) -> None:
     """Process one csv file at a time, and either delete it or move it when done."""
     monitor.successfully_processed_files_gauge.set(0)
     monitor.unprocessed_files_gauge.set(len(paths))
@@ -246,9 +206,7 @@ def process_files(
         except IOError as exc:
             logger.debug("Unable to open file {}: {!s}".format(path, exc))
         except Exception as exc:
-            logger.error(
-                "Parsing of file {} failed: {!s}".format(path, exc), exc_info=exc
-            )
+            logger.error("Parsing of file {} failed: {!s}".format(path, exc), exc_info=exc)
             monitor.incr_failed_files_counter()
 
             if failed_path is not None:
@@ -269,11 +227,7 @@ def process_files(
         post_all_data(thread_queue, monitor, finished_path)
         monitor.push()
 
-    logger.info(
-        "Total time to process {} of files: {:.2f} seconds".format(
-            len(paths), time.time() - start_time
-        )
-    )
+    logger.info("Total time to process {} of files: {:.2f} seconds".format(len(paths), time.time() - start_time))
 
 
 def find_historical_files_in_path(folder_path, time_from, time_until):
@@ -287,15 +241,9 @@ def find_historical_files_in_path(folder_path, time_from, time_until):
                 try:
                     timestamp = int(filename_parts[-1])
                 except ValueError as exc:
-                    logger.warning(
-                        "Failed to find timestamp in {}, skipping! {!s}".format(
-                            path.name, exc
-                        )
-                    )
+                    logger.warning("Failed to find timestamp in {}, skipping! {!s}".format(path.name, exc))
                 else:
-                    if (not time_from or time_from < timestamp) and (
-                        not time_until or timestamp < time_until
-                    ):
+                    if (not time_from or time_from < timestamp) and (not time_until or timestamp < time_until):
                         all_relevant_paths.append(path)
         all_paths = all_relevant_paths
 
@@ -318,6 +266,4 @@ def find_live_files_in_path(folder_path):
             all_relevant_paths.append((path, modified_timestamp))
 
     # We only process 20 newest before we look again for live
-    return [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=True)][
-        :20
-    ]
+    return [p for p, _ in sorted(all_relevant_paths, key=itemgetter(1), reverse=True)][:20]
