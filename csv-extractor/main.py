@@ -101,7 +101,7 @@ def main(args):
         client.login.status()
     except CogniteAPIError as exc:
         logger.error("Failed to create CDP client: {!s}".format(exc))
-        client = CogniteClient(api_key=api_key)
+        client = CogniteClient(api_key=api_key, client_name="tebis-csv-datapoint-extractor")
 
     project_name = client.config.project
     monitor = configure_prometheus(args.live, project_name)

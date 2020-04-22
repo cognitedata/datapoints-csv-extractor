@@ -70,9 +70,11 @@ def get_all_time_series(client):
 def _log_error(func, *args, **vargs):
     """Call 'func' with args, then log if an exception was raised."""
     try:
-        return func(*args, **vargs)
+        return func(*args)
     except Exception as error:
         logger.info(error)
+        if vargs['failed_path'] and not vargs['failed_path'].joinpath(vargs['csv_path'].name).exists():
+            vargs['csv_path'].replace(vargs['failed_path'].joinpath(vargs['csv_path'].name))
 
 
 def create_data_points(values, timestamps):
@@ -95,7 +97,7 @@ def create_time_series(client, name: str, external_id: str) -> None:
     new_time_series = TimeSeries(
         name=name, description="Auto-generated time series, external ID not found", external_id=external_id
     )
-    _log_error(client.time_series.create, new_time_series)  # error here !!!
+    _log_error(client.time_series.create, new_time_series)
 
 
 def get_parsed_file(path) -> Dict[str, list]:
@@ -109,7 +111,7 @@ def get_parsed_file(path) -> Dict[str, list]:
     return parsed_file
 
 
-def process_csv_file(client, monitor, csv_path, existing_time_series):
+def process_csv_file(client, monitor, csv_path, existing_time_series, failed_path):
     start_time = time.time()
 
     parsed_file = get_parsed_file(csv_path)
@@ -124,9 +126,10 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
         if len(current_time_series) >= 1000:
             network_threads.append(
                 threading.Thread(
-                    target=_log_error, args=(client.datapoints.insert_multiple, current_time_series.copy())
+                    target=_log_error, args=(client.datapoints.insert_multiple, current_time_series.copy()),
+                    kwargs={'csv_path': csv_path, 'failed_path': failed_path}
                 )
-            )  # make copy of time_series to use in Treads safely
+            )  # make copy of time_series to use in Threads safely
 
             current_time_series.clear()
 
@@ -146,7 +149,8 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
 
     if current_time_series:
         network_threads.append(
-            threading.Thread(target=_log_error, args=(client.datapoints.insert_multiple, current_time_series))
+            threading.Thread(target=_log_error, args=(client.datapoints.insert_multiple, current_time_series),
+                             kwargs={'csv_path': csv_path, 'failed_path': failed_path}),
         )
 
     logger.info("Time to process file {}: {:.2f} seconds".format(csv_path, time.time() - start_time))
@@ -165,10 +169,11 @@ def post_all_data(queue, monitor, finished_path):
 
     for path in map(itemgetter(1), queue):
         try:
-            if finished_path is None:
-                path.unlink()
-            else:
-                path.replace(finished_path.joinpath(path.name))
+            if path.exists():
+                if finished_path is None:
+                    path.unlink()
+                else:
+                    path.replace(finished_path.joinpath(path.name))
         except IOError as exc:
             logger.debug("Unable to delete file {}: {!s}".format(path, exc))
 
@@ -186,7 +191,8 @@ def process_files(client, monitor, paths, time_series_cache, failed_path, finish
 
     for path in paths:
         try:
-            threads, data_points_count, time_series_count = process_csv_file(client, monitor, path, time_series_cache)
+            threads, data_points_count, time_series_count = process_csv_file(client, monitor, path, time_series_cache,
+                                                                             failed_path)
             thread_queue.append((threads, path, data_points_count))
         except IOError as exc:
             logger.debug("Unable to open file {}: {!s}".format(path, exc))
