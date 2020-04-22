@@ -154,7 +154,7 @@ def process_csv_file(client, monitor, csv_path, existing_time_series, failed_pat
                     ),
                     kwargs={"csv_path": csv_path, "failed_path": failed_path},
                 )
-            )  # make copy of time_series to use in Threads safely
+            )
 
             current_time_series.clear()
 
