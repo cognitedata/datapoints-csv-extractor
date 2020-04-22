@@ -95,7 +95,11 @@ def _log_error(func, *args, **vargs):
                 vargs["csv_path"].replace(
                     vargs["failed_path"].joinpath(vargs["csv_path"].name)
                 )
-                logger.error("File {!s} is replaced to failed folder".format(vargs["csv_path"].name))
+                logger.error(
+                    "File {!s} is replaced to failed folder".format(
+                        vargs["csv_path"].name
+                    )
+                )
         except Exception as error2:
             logger.error("Failed to replace file to failed folder: {!s}".format(error2))
 
