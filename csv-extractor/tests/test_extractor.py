@@ -19,7 +19,14 @@ class TestExtractor:
 
     def test_create_datapoints(self):
         file_path = self.folder_path / "TEBIS_FK_1550092560.csv"
-        df = pandas.read_csv(file_path, encoding="latin-1", delimiter=";", quotechar='"', skiprows=[1], index_col=0)
+        df = pandas.read_csv(
+            file_path,
+            encoding="latin-1",
+            delimiter=";",
+            quotechar='"',
+            skiprows=[1],
+            index_col=0,
+        )
         timestamps = [int(o) * 1000 for o in df.index.tolist()]
         values = df.iloc[:, 0].values.tolist()
 
