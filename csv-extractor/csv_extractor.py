@@ -70,15 +70,23 @@ def get_all_time_series(client):
 def _log_error(func, *args, **vargs):
     """Call 'func' with args, then log if an exception was raised."""
     try:
-        return func(*args)
+        return func(*args, **vargs)
+    except Exception as error:
+        logger.info(error)
+
+
+def _log_error_with_backup_for_datapoints(func, csv_path, failed_path, *args, **vargs):
+    """Call 'func' with args, then log if an exception was raised."""
+    try:
+        return func(*args, **vargs)
     except Exception as error:
         logger.info(error)
         try:
-            if vargs["failed_path"] and not vargs["failed_path"].joinpath(vargs["csv_path"].name).exists():
-                vargs["csv_path"].replace(vargs["failed_path"].joinpath(vargs["csv_path"].name))
-                logger.error("File {!s} is replaced to failed folder".format(vargs["csv_path"].name))
-        except Exception as error2:
-            logger.error("Failed to replace file to failed folder: {!s}".format(error2))
+            if failed_path and not failed_path.joinpath(csv_path.name).exists():
+                csv_path.replace(failed_path.joinpath(csv_path.name))
+                logger.info("File {!s} is replaced to failed folder".format(csv_path.name))
+        except IOError as exc:
+            logger.debug("Failed to replace file {}: {!s}".format(csv_path.name, exc))
 
 
 def create_data_points(values, timestamps):
@@ -130,9 +138,8 @@ def process_csv_file(client, monitor, csv_path, existing_time_series, failed_pat
         if len(current_time_series) >= 1000:
             network_threads.append(
                 threading.Thread(
-                    target=_log_error,
-                    args=(client.datapoints.insert_multiple, current_time_series.copy()),
-                    kwargs={"csv_path": csv_path, "failed_path": failed_path},
+                    target=_log_error_with_backup_for_datapoints,
+                    args=(client.datapoints.insert_multiple, csv_path, failed_path, current_time_series.copy()),
                 )
             )
 
@@ -155,9 +162,8 @@ def process_csv_file(client, monitor, csv_path, existing_time_series, failed_pat
     if current_time_series:
         network_threads.append(
             threading.Thread(
-                target=_log_error,
-                args=(client.datapoints.insert_multiple, current_time_series),
-                kwargs={"csv_path": csv_path, "failed_path": failed_path},
+                target=_log_error_with_backup_for_datapoints,
+                args=(client.datapoints.insert_multiple, csv_path, failed_path, current_time_series.copy()),
             )
         )
 
