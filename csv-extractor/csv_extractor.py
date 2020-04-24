@@ -75,6 +75,20 @@ def _log_error(func, *args, **vargs):
         logger.info(error)
 
 
+def _log_error_with_backup_for_datapoints(func, csv_path, failed_path, *args, **vargs):
+    """Call 'func' with args, then log if an exception was raised."""
+    try:
+        return func(*args, **vargs)
+    except Exception as error:
+        logger.info(error)
+        try:
+            if failed_path and not failed_path.joinpath(csv_path.name).exists():
+                csv_path.replace(failed_path.joinpath(csv_path.name))
+                logger.info("File {!s} is replaced to failed folder".format(csv_path.name))
+        except IOError as exc:
+            logger.debug("Failed to replace file {}: {!s}".format(csv_path.name, exc))
+
+
 def create_data_points(values, timestamps):
     """Return list of tuples (ts, value), because next function gets that format, not Datapoint"""
     data_points = []
@@ -95,7 +109,7 @@ def create_time_series(client, name: str, external_id: str) -> None:
     new_time_series = TimeSeries(
         name=name, description="Auto-generated time series, external ID not found", external_id=external_id
     )
-    _log_error(client.time_series.create, new_time_series)  # error here !!!
+    _log_error(client.time_series.create, new_time_series)
 
 
 def get_parsed_file(path) -> Dict[str, list]:
@@ -109,7 +123,7 @@ def get_parsed_file(path) -> Dict[str, list]:
     return parsed_file
 
 
-def process_csv_file(client, monitor, csv_path, existing_time_series):
+def process_csv_file(client, monitor, csv_path, existing_time_series, failed_path):
     start_time = time.time()
 
     parsed_file = get_parsed_file(csv_path)
@@ -124,9 +138,10 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
         if len(current_time_series) >= 1000:
             network_threads.append(
                 threading.Thread(
-                    target=_log_error, args=(client.datapoints.insert_multiple, current_time_series.copy())
+                    target=_log_error_with_backup_for_datapoints,
+                    args=(client.datapoints.insert_multiple, csv_path, failed_path, current_time_series.copy()),
                 )
-            )  # make copy of time_series to use in Treads safely
+            )
 
             current_time_series.clear()
 
@@ -146,7 +161,10 @@ def process_csv_file(client, monitor, csv_path, existing_time_series):
 
     if current_time_series:
         network_threads.append(
-            threading.Thread(target=_log_error, args=(client.datapoints.insert_multiple, current_time_series))
+            threading.Thread(
+                target=_log_error_with_backup_for_datapoints,
+                args=(client.datapoints.insert_multiple, csv_path, failed_path, current_time_series.copy()),
+            )
         )
 
     logger.info("Time to process file {}: {:.2f} seconds".format(csv_path, time.time() - start_time))
@@ -165,10 +183,11 @@ def post_all_data(queue, monitor, finished_path):
 
     for path in map(itemgetter(1), queue):
         try:
-            if finished_path is None:
-                path.unlink()
-            else:
-                path.replace(finished_path.joinpath(path.name))
+            if path.exists():
+                if finished_path is None:
+                    path.unlink()
+                else:
+                    path.replace(finished_path.joinpath(path.name))
         except IOError as exc:
             logger.debug("Unable to delete file {}: {!s}".format(path, exc))
 
@@ -186,7 +205,9 @@ def process_files(client, monitor, paths, time_series_cache, failed_path, finish
 
     for path in paths:
         try:
-            threads, data_points_count, time_series_count = process_csv_file(client, monitor, path, time_series_cache)
+            threads, data_points_count, time_series_count = process_csv_file(
+                client, monitor, path, time_series_cache, failed_path
+            )
             thread_queue.append((threads, path, data_points_count))
         except IOError as exc:
             logger.debug("Unable to open file {}: {!s}".format(path, exc))
