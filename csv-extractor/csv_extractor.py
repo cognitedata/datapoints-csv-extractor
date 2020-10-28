@@ -252,9 +252,14 @@ def find_historical_files_in_path(folder_path, time_from, time_until):
                     if (not time_from or time_from < timestamp) and (not time_until or timestamp < time_until):
                         all_relevant_paths.append(path)
         all_paths = all_relevant_paths
-
-    shuffle(all_paths)
-    return all_paths
+    
+    """Sort files by timestamp. Files without timestamp postfix """
+    splitted_path_lst = [path.stem.split("_") for path in all_paths]
+    timestamp_lst = [int(parts[-1]) if len(parts) > 2 else 0 for parts in splitted_path_lst]
+    combined = list(zip(timestamp_lst, all_paths))
+    sorted_paths = [i[1] for i in sorted(combined, key=lambda x: x[0])]
+    
+    return sorted_paths
 
 
 def find_live_files_in_path(folder_path):
