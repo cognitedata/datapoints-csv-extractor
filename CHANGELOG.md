@@ -15,6 +15,7 @@ Changes are grouped as follows
 ## Unpublished
 ### Added
 - Command line arguments for limit historical files between timestamps
+- Process historical files in ascending order by their timestamp postfix.
 
 ## [0.2.0] - 2019-06-28
 ### Added
