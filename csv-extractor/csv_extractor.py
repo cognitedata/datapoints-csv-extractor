@@ -254,10 +254,10 @@ def find_historical_files_in_path(folder_path, time_from, time_until):
         all_paths = all_relevant_paths
     
     """Sort files by timestamp. Files without timestamp postfix defaults to timestamp=0"""
-    splitted_path_lst = [path.stem.split("_") for path in all_paths]
+	splitted_path_lst = [path.stem.split("_") for path in all_paths]
     timestamp_lst = [int(parts[-1]) if len(parts) > 2 else 0 for parts in splitted_path_lst]
-    combined = list(zip(timestamp_lst, all_paths))
-    sorted_paths = [i[1] for i in sorted(combined, key=lambda x: x[0])]
+    zipped = zip(timestamp_lst, all_paths)
+    sorted_paths = [i[1] for i in sorted(zipped, key=itemgetter(0))]
     
     return sorted_paths
 
